@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS recipes (
 CREATE TABLE IF NOT EXISTS stock_moves (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
   item_id   TEXT NOT NULL REFERENCES inventory_items(id),
-  type      TEXT NOT NULL CHECK (type IN ('sale','void','refund','import','adjust','count')),
+  type      TEXT NOT NULL,                 -- sale void refund import adjust count issue return waste
   qty_delta REAL NOT NULL,
   qty_after REAL NOT NULL,
   ref_type  TEXT,
@@ -164,6 +164,29 @@ CREATE TABLE IF NOT EXISTS stock_moves (
 );
 CREATE INDEX IF NOT EXISTS idx_moves_item ON stock_moves(item_id, at);
 CREATE INDEX IF NOT EXISTS idx_moves_at ON stock_moves(at);
+
+-- Kitchen sessions (estimate stock: rice, vegetables, tea): what was issued to the kitchen at the
+-- start of the day/shift, top-ups, what came back and what was wasted. Usage is NOT derived from sales.
+CREATE TABLE IF NOT EXISTS kitchen_sessions (
+  id         TEXT PRIMARY KEY,
+  status     TEXT NOT NULL CHECK (status IN ('open','closed')),
+  shift_id   TEXT,
+  opened_at  TEXT NOT NULL,
+  opened_by  TEXT,
+  closed_at  TEXT,
+  closed_by  TEXT,
+  note       TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS kitchen_lines (
+  session_id TEXT NOT NULL REFERENCES kitchen_sessions(id) ON DELETE CASCADE,
+  item_id    TEXT NOT NULL REFERENCES inventory_items(id),
+  issued     REAL NOT NULL DEFAULT 0,  -- at opening
+  added      REAL NOT NULL DEFAULT 0,  -- top-ups during the session
+  remaining  REAL,                     -- counted at closing, goes back to stock
+  waste      REAL,                     -- spoiled / lost, reported at closing
+  reason     TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (session_id, item_id)
+);
 
 CREATE TABLE IF NOT EXISTS stocktakes (
   id         TEXT PRIMARY KEY,
@@ -323,9 +346,27 @@ const COLUMNS: [table: string, column: string, ddl: string][] = [
   ['order_items', 'unit_cost', 'INTEGER'],
   ['order_items', 'option_ids', "TEXT NOT NULL DEFAULT ''"], // comma-separated option ids
   ['options', 'recipe_factor', 'REAL NOT NULL DEFAULT 1'], // e.g. size L = 1.4 x the base recipe
+  ['products', 'grid_row', 'INTEGER'], // menu layout: row and column (0-4) inside its category
+  ['products', 'grid_col', 'INTEGER'],
+  ['inventory_items', 'tracking', "TEXT NOT NULL DEFAULT 'exact'"], // exact = counted units, estimate = shown as "còn khoảng"
+  ['inventory_items', 'default_issue', 'REAL'], // usual amount issued to the kitchen at opening (e.g. rice 15 kg)
 ];
 
 function migrate(db: DB) {
+  // v2.0 created stock_moves with a CHECK on the move type; rebuild once without it.
+  const movesSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='stock_moves'").get()?.sql as string) ?? '';
+  if (movesSql.includes("CHECK (type IN")) {
+    db.exec('BEGIN');
+    db.exec('ALTER TABLE stock_moves RENAME TO stock_moves_old');
+    db.exec(`CREATE TABLE stock_moves (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL REFERENCES inventory_items(id), type TEXT NOT NULL,
+      qty_delta REAL NOT NULL, qty_after REAL NOT NULL, ref_type TEXT, ref_id TEXT, user_id TEXT, reason TEXT NOT NULL DEFAULT '', at TEXT NOT NULL)`);
+    db.exec('INSERT INTO stock_moves SELECT * FROM stock_moves_old');
+    db.exec('DROP TABLE stock_moves_old');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_moves_item ON stock_moves(item_id, at)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_moves_at ON stock_moves(at)');
+    db.exec('COMMIT');
+  }
   // v1 created `orders` with CHECK constraints that reject 'refunded' and 'qr'. Rebuild it once.
   const ordersSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='orders'").get()?.sql as string) ?? '';
   if (ordersSql.includes('CHECK (payment_method IN')) {

@@ -12,7 +12,8 @@ export type NotificationType =
   | 'purchase.pending'
   | 'purchase.decided'
   | 'order.refunded'
-  | 'order.voided';
+  | 'order.voided'
+  | 'kitchen.closed';
 
 export const NOTIFICATION_TYPES: { type: NotificationType; label: string }[] = [
   { type: 'stock.low', label: 'Hàng sắp hết / dưới ngưỡng' },
@@ -23,6 +24,7 @@ export const NOTIFICATION_TYPES: { type: NotificationType; label: string }[] = [
   { type: 'purchase.decided', label: 'Đề xuất nhập hàng đã duyệt/từ chối' },
   { type: 'order.refunded', label: 'Đơn hoàn tiền' },
   { type: 'order.voided', label: 'Đơn bị huỷ' },
+  { type: 'kitchen.closed', label: 'Tổng kết bếp cuối ca (gạo, rau, trà)' },
 ];
 
 export interface NewNotification {

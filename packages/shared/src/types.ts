@@ -49,6 +49,9 @@ export interface Product {
   stock: number | null;
   active: boolean;
   optionGroups: OptionGroup[];
+  /** Menu grid position inside its category: 5 columns per row (null = auto-place). */
+  gridRow?: number | null;
+  gridCol?: number | null;
   updatedAt: string;
 }
 
@@ -137,6 +140,10 @@ export interface InventoryItem {
   name: string;
   unit: string;
   kind: 'ingredient' | 'goods';
+  /** exact = counted units (meat portions, bottles); estimate = "còn khoảng" (rice, vegetables, tea, boxes). */
+  tracking: 'exact' | 'estimate';
+  /** Usual amount issued to the kitchen at the start of a shift (estimate items). */
+  defaultIssue: number | null;
   qty: number;
   minQty: number;
   unitCost: number;
@@ -146,7 +153,7 @@ export interface InventoryItem {
   updatedAt: string;
 }
 
-export type MoveType = 'sale' | 'void' | 'refund' | 'import' | 'adjust' | 'count';
+export type MoveType = 'sale' | 'void' | 'refund' | 'import' | 'adjust' | 'count' | 'issue' | 'return' | 'waste';
 export const MOVE_TYPE_LABEL: Record<MoveType, string> = {
   sale: 'Bán hàng',
   void: 'Huỷ đơn',
@@ -154,7 +161,35 @@ export const MOVE_TYPE_LABEL: Record<MoveType, string> = {
   import: 'Nhập hàng',
   adjust: 'Điều chỉnh',
   count: 'Kiểm kê',
+  issue: 'Xuất bếp',
+  return: 'Bếp trả lại',
+  waste: 'Hao hụt',
 };
+
+export interface KitchenLine {
+  itemId: string;
+  name: string;
+  unit: string;
+  issued: number;
+  added: number;
+  remaining: number | null;
+  waste: number | null;
+  /** issued + added - remaining - waste, once closed. */
+  used: number | null;
+  reason: string;
+}
+
+export interface KitchenSession {
+  id: string;
+  status: 'open' | 'closed';
+  shiftId: string | null;
+  openedAt: string;
+  openedBy: string | null;
+  closedAt: string | null;
+  closedBy: string | null;
+  note: string;
+  lines: KitchenLine[];
+}
 
 export interface StockMove {
   id: number;

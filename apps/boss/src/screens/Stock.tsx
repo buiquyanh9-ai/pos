@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { MOVE_TYPE_LABEL, PURCHASE_STATUS_LABEL, money, qty, type InventoryItem, type Purchase } from '@shopflow/shared';
+import { MOVE_TYPE_LABEL, PURCHASE_STATUS_LABEL, money, qty, stockText, type InventoryItem, type Purchase } from '@shopflow/shared';
 import { api } from '../lib/api';
 import { dateTimeLocal } from '../lib/range';
 import { call, useRemote } from '../lib/store';
 import { Card, Header, Loading, Segmented, Sheet } from '../components/UI';
 
-type Tab = 'stock' | 'purchases' | 'counts' | 'history';
+type Tab = 'stock' | 'kitchen' | 'purchases' | 'counts' | 'history';
 
 export function Stock() {
   const [tab, setTab] = useState<Tab>('stock');
@@ -18,12 +18,14 @@ export function Stock() {
           onChange={setTab}
           options={[
             { id: 'stock', label: 'Tồn kho' },
+            { id: 'kitchen', label: 'Bếp' },
             { id: 'purchases', label: 'Nhập hàng' },
             { id: 'counts', label: 'Kiểm kê' },
             { id: 'history', label: 'Lịch sử' },
           ]}
         />
         {tab === 'stock' && <StockList />}
+        {tab === 'kitchen' && <KitchenHistory />}
         {tab === 'purchases' && <Purchases />}
         {tab === 'counts' && <Stocktakes />}
         {tab === 'history' && <History />}
@@ -32,12 +34,64 @@ export function Stock() {
   );
 }
 
+/** Rice / vegetables / tea per shift: issued, returned, wasted, used. */
+function KitchenHistory() {
+  const { data, error, loading } = useRemote(api.kitchenSessions);
+  return (
+    <>
+      <p className="muted small">Gạo, rau, trà không trừ theo hoá đơn: bếp khai báo lượng xuất đầu ca và lượng còn lại / hao hụt cuối ca.</p>
+      <Loading error={error} loading={loading && !data} />
+      {data?.sessions.map((s) => (
+        <Card
+          key={s.id}
+          title={`Ca bếp ${dateTimeLocal(s.openedAt)}`}
+          action={<span className={s.status === 'open' ? 'tag tag-ok' : 'tag'}>{s.status === 'open' ? 'Đang mở' : 'Đã chốt'}</span>}
+        >
+          <p className="muted small">
+            Mở: {s.openedBy ?? ''}
+            {s.closedAt && ` · Chốt: ${s.closedBy ?? ''} ${dateTimeLocal(s.closedAt)}`}
+          </p>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Nguyên liệu</th>
+                <th className="num">Xuất</th>
+                <th className="num">Còn</th>
+                <th className="num">Hao hụt</th>
+                <th className="num">Đã dùng</th>
+              </tr>
+            </thead>
+            <tbody>
+              {s.lines.map((l) => (
+                <tr key={l.itemId}>
+                  <td>{l.name}</td>
+                  <td className="num">
+                    {qty(l.issued + l.added)} {l.unit}
+                  </td>
+                  <td className="num">{l.remaining === null ? '—' : qty(l.remaining)}</td>
+                  <td className={`num ${l.waste ? 'neg' : ''}`} title={l.reason}>
+                    {l.waste ? qty(l.waste) : '—'}
+                  </td>
+                  <td className="num">
+                    <strong>{l.used === null ? '—' : qty(l.used)}</strong>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      ))}
+      {data && !data.sessions.length && <p className="empty">Chưa có ca bếp nào</p>}
+    </>
+  );
+}
+
 function StockList() {
   const { data, error, loading } = useRemote(api.inventory);
   const [onlyLow, setOnlyLow] = useState(false);
-  const [kind, setKind] = useState<'all' | 'ingredient' | 'goods'>('all');
+  const [kind, setKind] = useState<'all' | 'exact' | 'estimate'>('all');
   const [open, setOpen] = useState<InventoryItem | null>(null);
-  const items = (data?.items ?? []).filter((i) => (!onlyLow || i.low) && (kind === 'all' || i.kind === kind));
+  const items = (data?.items ?? []).filter((i) => (!onlyLow || i.low) && (kind === 'all' || (i.tracking ?? 'exact') === kind));
   const lowCount = (data?.items ?? []).filter((i) => i.low).length;
   return (
     <>
@@ -45,11 +99,11 @@ function StockList() {
         <button className={kind === 'all' ? 'chip on' : 'chip'} onClick={() => setKind('all')}>
           Tất cả
         </button>
-        <button className={kind === 'ingredient' ? 'chip on' : 'chip'} onClick={() => setKind('ingredient')}>
-          Nguyên liệu
+        <button className={kind === 'exact' ? 'chip on' : 'chip'} onClick={() => setKind('exact')}>
+          Đếm chính xác
         </button>
-        <button className={kind === 'goods' ? 'chip on' : 'chip'} onClick={() => setKind('goods')}>
-          Hàng hoá
+        <button className={kind === 'estimate' ? 'chip on' : 'chip'} onClick={() => setKind('estimate')}>
+          Ước lượng
         </button>
         <button className={onlyLow ? 'chip on warn' : 'chip'} onClick={() => setOnlyLow(!onlyLow)}>
           ⚠ Sắp hết ({lowCount})
@@ -74,7 +128,7 @@ function StockList() {
                 </td>
                 <td className="num muted">{qty(i.minQty)}</td>
                 <td className="num">
-                  <strong>{qty(i.qty)}</strong>
+                  <strong>{i.tracking === 'estimate' ? stockText(i).replace(` ${i.unit}`, '') : qty(i.qty)}</strong>
                   {i.low && <span className="tag tag-warn">Thấp</span>}
                 </td>
               </tr>
@@ -95,9 +149,7 @@ function ItemSheet({ item, onClose }: { item: InventoryItem; onClose: () => void
       <ul className="kv">
         <li>
           <span>Tồn hiện tại</span>
-          <strong>
-            {qty(item.qty)} {item.unit}
-          </strong>
+          <strong>{stockText(item)}</strong>
         </li>
         <li>
           <span>Ngưỡng tối thiểu</span>

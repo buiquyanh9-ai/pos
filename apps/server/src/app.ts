@@ -14,6 +14,7 @@ import { salesRoutes } from './routes/sales.ts';
 import { inventoryRoutes } from './routes/inventory.ts';
 import { miscRoutes } from './routes/misc.ts';
 import { openOrderRoutes } from './routes/openOrders.ts';
+import { kitchenRoutes } from './routes/kitchen.ts';
 
 export const API_VERSION = '2';
 
@@ -37,6 +38,24 @@ export function createApp({ db, apiKey }: AppOptions) {
   });
   app.use('/api', publicAuthRoutes(db));
 
+  // Product photos (public). Looked up by base name in MENU_IMG_DIR (default: <repo>/../product/product_img)
+  // and apps/server/media/products, any of .jpg .jpeg .png .webp. Missing photo -> 404 (apps show a letter tile).
+  const imgDirs = [
+    process.env.MENU_IMG_DIR ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'product', 'product_img'),
+    join(dirname(fileURLToPath(import.meta.url)), '..', 'media', 'products'),
+  ];
+  app.get('/media/products/:name', (req, res) => {
+    const name = String(req.params.name).replace(/\.(jpe?g|png|webp)$/i, '');
+    if (!/^[a-z0-9-]{1,80}$/.test(name)) return void res.status(400).end();
+    for (const dir of imgDirs) {
+      for (const ext of ['jpg', 'jpeg', 'png', 'webp']) {
+        const file = join(dir, `${name}.${ext}`);
+        if (existsSync(file)) return void res.sendFile(file, { maxAge: '1h' });
+      }
+    }
+    res.status(404).end();
+  });
+
   // ---- everything else requires a session token (or the service key)
   app.use('/api', authenticate(db, apiKey));
   app.use('/api', authRoutes(db));
@@ -45,6 +64,7 @@ export function createApp({ db, apiKey }: AppOptions) {
   app.use('/api', inventoryRoutes(db));
   app.use('/api', miscRoutes(db));
   app.use('/api', openOrderRoutes(db));
+  app.use('/api', kitchenRoutes(db));
   app.use('/api/hardware', hardwareRouter);
 
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'not found')));

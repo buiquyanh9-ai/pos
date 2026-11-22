@@ -2,6 +2,7 @@ import type {
   Category,
   DiningTable,
   InventoryItem,
+  KitchenSession,
   LocalOrder,
   OpenOrder,
   OptionGroup,
@@ -173,6 +174,19 @@ export const api = {
   createStocktake: (c: ApiConfig, body: { shiftId?: string; note?: string; lines: { itemId: string; counted: number; reason?: string }[] }) =>
     request<Stocktake>(c, 'POST', '/inventory/stocktakes', body),
   stocktakes: (c: ApiConfig) => request<{ stocktakes: Stocktake[] }>(c, 'GET', '/inventory/stocktakes'),
+
+  wasteStock: (c: ApiConfig, itemId: string, qty: number, reason: string) =>
+    request<{ ok: boolean }>(c, 'POST', `/inventory/items/${encodeURIComponent(itemId)}/waste`, { qty, reason }),
+
+  // ---- kitchen (estimate stock: rice, vegetables, tea)
+  kitchenCurrent: (c: ApiConfig) =>
+    request<{ session: KitchenSession | null; items: { itemId: string; name: string; unit: string; stock: number; defaultIssue: number | null }[] }>(c, 'GET', '/kitchen/current'),
+  kitchenOpen: (c: ApiConfig, body: { shiftId?: string; lines: { itemId: string; qty: number }[] }) => request<KitchenSession>(c, 'POST', '/kitchen/open', body),
+  kitchenAdd: (c: ApiConfig, id: string, lines: { itemId: string; qty: number }[]) =>
+    request<KitchenSession>(c, 'POST', `/kitchen/${encodeURIComponent(id)}/add`, { lines }),
+  kitchenClose: (c: ApiConfig, id: string, lines: { itemId: string; remaining: number; waste?: number; reason?: string }[]) =>
+    request<KitchenSession>(c, 'POST', `/kitchen/${encodeURIComponent(id)}/close`, { lines }),
+  kitchenSessions: (c: ApiConfig) => request<{ sessions: KitchenSession[] }>(c, 'GET', '/kitchen/sessions'),
 
   // ---- purchasing
   suppliers: (c: ApiConfig) => request<{ suppliers: Supplier[] }>(c, 'GET', '/suppliers'),

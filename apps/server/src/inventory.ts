@@ -3,7 +3,7 @@ import { publish } from './events.ts';
 import { createNotification } from './notifications.ts';
 import { HttpError } from './validate.ts';
 
-export type MoveType = 'sale' | 'void' | 'refund' | 'import' | 'adjust' | 'count';
+export type MoveType = 'sale' | 'void' | 'refund' | 'import' | 'adjust' | 'count' | 'issue' | 'return' | 'waste';
 
 const round = (n: number) => Math.round(n * 1000) / 1000; // stock kept to 3 decimals (kg, l)
 
@@ -15,6 +15,9 @@ export function itemDto(r: Row) {
     name: r.name as string,
     unit: r.unit as string,
     kind: r.kind as 'ingredient' | 'goods',
+    /** exact: counted units (meat portions, bottles). estimate: shown as "còn khoảng X" (rice, vegetables, tea, boxes). */
+    tracking: ((r.tracking as string) ?? 'exact') as 'exact' | 'estimate',
+    defaultIssue: r.default_issue === null || r.default_issue === undefined ? null : Number(r.default_issue),
     qty,
     minQty,
     unitCost: Number(r.unit_cost),

@@ -4,6 +4,7 @@ import { createApp } from './app.ts';
 import { seedDemoSales, seedIfEmpty } from './seed.ts';
 import { createNotification, pushEnabled } from './notifications.ts';
 import { summarize } from './reports.ts';
+import { watchMenu } from './menuWatch.ts';
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -17,6 +18,8 @@ if (process.env.SEED !== '0') {
   seedIfEmpty(db);
   if (process.env.SEED_DEMO_SALES === '1') seedDemoSales(db);
 }
+// The shop's menu file (product/z.product) is the source of truth for products and tables.
+if (process.env.MENU_SYNC !== '0') watchMenu(db, { sampleStock: process.env.SEED !== '0' });
 
 // End-of-day summary notification, once per local day after DAY_SUMMARY_HOUR.
 function daySummaryTick() {

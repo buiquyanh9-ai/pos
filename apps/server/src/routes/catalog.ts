@@ -91,6 +91,9 @@ export function catalogRoutes(db: DB) {
         stock: avail.has(id) ? avail.get(id)! : null,
         active: Number(p.active) === 1,
         sort: Number(p.sort ?? 0),
+        /** Position in the menu grid of its category (5 columns per row). null = auto. */
+        gridRow: p.grid_row === null || p.grid_row === undefined ? null : Number(p.grid_row),
+        gridCol: p.grid_col === null || p.grid_col === undefined ? null : Number(p.grid_col),
         optionGroups: groups.get(id) ?? [],
         recipe: recipes.get(id) ?? [],
         updatedAt: p.updated_at as string,
@@ -154,7 +157,7 @@ export function catalogRoutes(db: DB) {
     if (!includeInactive) where.push('p.active = 1');
     if (since) (where.push('p.updated_at > ?'), params.push(since));
     const rows = db
-      .prepare(`${productSelect} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY COALESCE(c.sort, 999), p.sort, p.name`)
+      .prepare(`${productSelect} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY COALESCE(c.sort, 999), COALESCE(p.grid_row, 999), COALESCE(p.grid_col, 9), p.sort, p.name`)
       .all(...params);
     const cats = db.prepare('SELECT id, name, sort, color FROM categories WHERE active = 1 ORDER BY sort, name').all();
     res.json({ products: productsDto(rows), categories: cats, optionGroups: optionGroupsByProduct().all, serverTime: now() });
@@ -259,6 +262,8 @@ export function catalogRoutes(db: DB) {
       set('price', int(b.price, 'price', { optional: true, min: 0, max: MAX_MONEY }));
       set('cost', b.cost === null ? null : int(b.cost, 'cost', { optional: true, min: 0, max: MAX_MONEY }));
       set('sort', int(b.sort, 'sort', { optional: true }));
+      set('grid_row', b.gridRow === null ? null : int(b.gridRow, 'gridRow', { optional: true, min: 0, max: 99 }));
+      set('grid_col', b.gridCol === null ? null : int(b.gridCol, 'gridCol', { optional: true, min: 0, max: 4 }));
       if (b.active !== undefined) set('active', b.active ? 1 : 0);
       const cat = resolveCategory(b.categoryId ?? b.category);
       if (cat) (set('category_id', cat.id), set('category', cat.name));

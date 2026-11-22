@@ -38,7 +38,14 @@ export function inventoryRoutes(db: DB) {
       unit_cost: int(b.unitCost, 'unitCost', { optional: true, min: 0, max: MAX_MONEY }),
       supplier_id: b.supplierId === null ? null : str(b.supplierId, 'supplierId', { optional: true, max: 64 }),
       active: b.active === undefined ? undefined : b.active ? 1 : 0,
+      tracking: readTracking(b.tracking),
+      default_issue: b.defaultIssue === null ? null : num(b.defaultIssue, 'defaultIssue', { optional: true, min: 0 }),
     };
+  }
+  function readTracking(v: unknown) {
+    const t = str(v, 'tracking', { optional: true, max: 16 });
+    if (t !== undefined && t !== 'exact' && t !== 'estimate') throw bad('tracking must be exact or estimate');
+    return t;
   }
 
   r.post('/inventory/items', allow('stock'), (req, res) => {
@@ -49,8 +56,8 @@ export function inventoryRoutes(db: DB) {
     tx(db, () => {
       if (db.prepare('SELECT 1 FROM inventory_items WHERE id = ?').get(id)) throw new HttpError(409, 'item id already exists');
       db.prepare(
-        'INSERT INTO inventory_items (id, name, unit, kind, qty, min_qty, unit_cost, supplier_id, active, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?, 1, ?)',
-      ).run(id, f.name!, f.unit!, f.kind ?? 'ingredient', f.min_qty ?? 0, f.unit_cost ?? 0, f.supplier_id ?? null, now());
+        'INSERT INTO inventory_items (id, name, unit, kind, qty, min_qty, unit_cost, supplier_id, active, tracking, default_issue, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?, 1, ?, ?, ?)',
+      ).run(id, f.name!, f.unit!, f.kind ?? 'ingredient', f.min_qty ?? 0, f.unit_cost ?? 0, f.supplier_id ?? null, f.tracking ?? 'exact', f.default_issue ?? null, now());
       if (initial) moveStock(db, id, initial, { type: 'adjust', userId: actorId(req), reason: 'Tồn đầu kỳ' });
       audit(db, actorId(req), 'inventory.create', 'inventory_item', id, b);
     });

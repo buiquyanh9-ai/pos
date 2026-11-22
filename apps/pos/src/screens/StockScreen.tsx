@@ -3,10 +3,11 @@ import { api } from '../lib/api';
 import { dateTime, money } from '../lib/format';
 import { notify } from '../lib/notify';
 import { remote, usePos } from '../lib/store';
-import { MOVE_TYPE_LABEL, PURCHASE_STATUS_LABEL, type InventoryItem, type Purchase, type StockMove, type Supplier } from '../lib/types';
+import { MOVE_TYPE_LABEL, PURCHASE_STATUS_LABEL, type InventoryItem, type KitchenSession, type Purchase, type StockMove, type Supplier } from '../lib/types';
+import { stockText } from '@shopflow/shared';
 import { Modal } from '../components/Modal';
 
-type Section = 'list' | 'low' | 'count' | 'purchase' | 'history';
+type Section = 'list' | 'low' | 'kitchen' | 'count' | 'purchase' | 'history';
 const qty = (n: number) => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3 }).format(n);
 const err = (e: unknown) => notify(e instanceof Error ? e.message : String(e), 'error');
 
@@ -23,6 +24,7 @@ export function StockScreen() {
   const menu: { id: Section; label: string; show: boolean }[] = [
     { id: 'list', label: 'Danh sách hàng tồn', show: true },
     { id: 'low', label: `Hàng sắp hết${lowCount ? ` (${lowCount})` : ''}`, show: true },
+    { id: 'kitchen', label: 'Bếp: đầu ca / cuối ca', show: true },
     { id: 'count', label: 'Kiểm kê cuối ca', show: true },
     { id: 'purchase', label: 'Nhập hàng', show: canManage },
     { id: 'history', label: 'Lịch sử nhập / xuất', show: true },
@@ -45,6 +47,7 @@ export function StockScreen() {
         {items && (section === 'list' || section === 'low') && (
           <StockTable items={section === 'low' ? items.filter((i) => i.low) : items} canAdjust={canManage} onChanged={reload} />
         )}
+        {items && section === 'kitchen' && <Kitchen onChanged={reload} />}
         {items && section === 'count' && <Stocktake items={items} onDone={() => (reload(), setSection('history'))} />}
         {items && section === 'purchase' && canManage && <Purchasing items={items} onChanged={reload} />}
         {section === 'history' && <History />}
@@ -54,19 +57,25 @@ export function StockScreen() {
 }
 
 function StockTable({ items, canAdjust, onChanged }: { items: InventoryItem[]; canAdjust: boolean; onChanged: () => void }) {
-  const [kind, setKind] = useState<'ingredient' | 'goods'>('ingredient');
+  const [tracking, setTracking] = useState<'exact' | 'estimate'>('exact');
   const [adjusting, setAdjusting] = useState<InventoryItem | null>(null);
-  const rows = items.filter((i) => i.kind === kind);
+  const [wasting, setWasting] = useState<InventoryItem | null>(null);
+  const rows = items.filter((i) => (i.tracking ?? 'exact') === tracking);
   return (
     <>
       <div className="segmented">
-        <button className={kind === 'ingredient' ? 'seg active' : 'seg'} onClick={() => setKind('ingredient')}>
-          Nguyên liệu
+        <button className={tracking === 'exact' ? 'seg active' : 'seg'} onClick={() => setTracking('exact')}>
+          Kho đếm chính xác
         </button>
-        <button className={kind === 'goods' ? 'seg active' : 'seg'} onClick={() => setKind('goods')}>
-          Hàng hoá
+        <button className={tracking === 'estimate' ? 'seg active' : 'seg'} onClick={() => setTracking('estimate')}>
+          Kho ước lượng
         </button>
       </div>
+      <p className="muted small">
+        {tracking === 'exact'
+          ? 'Thịt, cá và đồ uống: tự trừ theo số phần bán ra, hoàn lại khi huỷ đơn.'
+          : 'Gạo, rau, trà: quản lý theo lượng xuất bếp đầu ca / còn lại cuối ca (mục Bếp). Hộp mang về tự trừ 1 hộp mỗi suất mang về.'}
+      </p>
       <table className="stock-table">
         <thead>
           <tr>
@@ -74,7 +83,7 @@ function StockTable({ items, canAdjust, onChanged }: { items: InventoryItem[]; c
             <th>Đơn vị</th>
             <th className="num">Tối thiểu</th>
             <th className="num">Số lượng</th>
-            {canAdjust && <th />}
+            <th />
           </tr>
         </thead>
         <tbody>
@@ -84,22 +93,276 @@ function StockTable({ items, canAdjust, onChanged }: { items: InventoryItem[]; c
               <td className="muted">{i.unit}</td>
               <td className="num muted">{qty(i.minQty)}</td>
               <td className={`num ${i.qty < 0 ? 'neg' : ''}`}>
-                <strong>{qty(i.qty)}</strong>
+                <strong>{i.tracking === 'estimate' ? stockText(i) : qty(i.qty)}</strong>
                 {i.low && <span className="pill pill-rejected">Sắp hết</span>}
               </td>
-              {canAdjust && (
-                <td className="num">
+              <td className="num row-actions">
+                <button className="chip" onClick={() => setWasting(i)}>
+                  Ghi hao hụt
+                </button>
+                {canAdjust && (
                   <button className="chip" onClick={() => setAdjusting(i)}>
                     Điều chỉnh
                   </button>
-                </td>
-              )}
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
       {!rows.length && <p className="empty">Không có mặt hàng</p>}
       {adjusting && <AdjustDialog item={adjusting} onClose={() => setAdjusting(null)} onDone={() => (setAdjusting(null), onChanged())} />}
+      {wasting && <WasteDialog item={wasting} onClose={() => setWasting(null)} onDone={() => (setWasting(null), onChanged())} />}
+    </>
+  );
+}
+
+function WasteDialog({ item, onClose, onDone }: { item: InventoryItem; onClose: () => void; onDone: () => void }) {
+  const [value, setValue] = useState('1');
+  const [reason, setReason] = useState('');
+  const n = Number(value.replace(',', '.'));
+  const valid = n > 0 && reason.trim().length > 0;
+  const presets = /hộp/i.test(item.name) ? ['Hộp hỏng', 'Hộp thủng', 'Rơi vỡ'] : ['Hư hỏng', 'Hết hạn', 'Đổ vỡ', 'Rơi vãi'];
+  return (
+    <Modal title={`Ghi hao hụt: ${item.name}`} onClose={onClose}>
+      <p className="muted">Hiện có: {stockText(item)}</p>
+      <label className="field">
+        Số lượng hao hụt ({item.unit})
+        <input inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
+      </label>
+      <div className="opt-row">
+        {presets.map((r) => (
+          <button key={r} className={reason === r ? 'opt on' : 'opt'} onClick={() => setReason(r)}>
+            {r}
+          </button>
+        ))}
+      </div>
+      <input className="opt-note" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Lý do (bắt buộc)" />
+      <button
+        className="btn primary big full"
+        disabled={!valid}
+        onClick={() =>
+          remote(api.wasteStock, item.id, n, reason.trim())
+            .then(() => (notify('Đã ghi hao hụt', 'success'), onDone()))
+            .catch(err)
+        }
+      >
+        Ghi hao hụt {valid ? `−${qty(n)} ${item.unit}` : ''}
+      </button>
+    </Modal>
+  );
+}
+
+/** Rice / vegetables / tea: issue to the kitchen at the start, report leftovers and waste at the end. */
+function Kitchen({ onChanged }: { onChanged: () => void }) {
+  const shiftId = usePos((s) => s.shift?.id);
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.kitchenCurrent>> | null>(null);
+  const [history, setHistory] = useState<KitchenSession[]>([]);
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [closing, setClosing] = useState<Record<string, { remaining: string; waste: string; reason: string }>>({});
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    try {
+      const [cur, hist] = await Promise.all([remote(api.kitchenCurrent), remote(api.kitchenSessions)]);
+      setData(cur);
+      setHistory(hist.sessions.filter((s) => s.status === 'closed').slice(0, 10));
+      // Pre-fill the usual amounts (rice 15 kg, vegetables 4 kg, tea 100 g); editable.
+      setAmounts(Object.fromEntries(cur.items.filter((i) => i.defaultIssue !== null).map((i) => [i.itemId, String(i.defaultIssue)])));
+      setClosing({});
+    } catch (e) {
+      err(e);
+    }
+  }, []);
+  useEffect(() => void load(), [load]);
+  const run = async (fn: () => Promise<unknown>, msg: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      notify(msg, 'success');
+      await load();
+      onChanged();
+    } catch (e) {
+      err(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const num = (s: string | undefined) => Number((s ?? '').replace(',', '.'));
+  if (!data) return <p className="empty">Đang tải…</p>;
+  const issuable = data.items.filter((i) => i.defaultIssue !== null);
+  const s = data.session;
+
+  return (
+    <>
+      {!s ? (
+        <section className="kitchen-card">
+          <h3>Xuất bếp đầu ca</h3>
+          <p className="muted small">Khai báo lượng đem nấu / chuẩn bị hôm nay. Số mặc định có thể sửa. Bán cơm không tự trừ gạo.</p>
+          <table className="stock-table">
+            <thead>
+              <tr>
+                <th>Nguyên liệu</th>
+                <th className="num">Tồn kho</th>
+                <th className="num">Xuất bếp</th>
+              </tr>
+            </thead>
+            <tbody>
+              {issuable.map((i) => (
+                <tr key={i.itemId}>
+                  <td>{i.name}</td>
+                  <td className="num muted">{stockText({ qty: i.stock, unit: i.unit, tracking: 'estimate' })}</td>
+                  <td className="num">
+                    <input className="count-input" inputMode="decimal" value={amounts[i.itemId] ?? ''} onChange={(e) => setAmounts({ ...amounts, [i.itemId]: e.target.value })} />{' '}
+                    {i.unit}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button
+            className="btn primary big"
+            disabled={busy || !issuable.some((i) => num(amounts[i.itemId]) > 0)}
+            onClick={() =>
+              run(
+                () =>
+                  remote(api.kitchenOpen, {
+                    shiftId,
+                    lines: issuable.map((i) => ({ itemId: i.itemId, qty: Math.max(0, num(amounts[i.itemId]) || 0) })),
+                  }),
+                'Đã ghi xuất bếp đầu ca',
+              )
+            }
+          >
+            Xác nhận xuất bếp
+          </button>
+        </section>
+      ) : (
+        <section className="kitchen-card">
+          <h3>
+            Bếp đang mở <span className="muted small">từ {dateTime(s.openedAt)} · {s.openedBy}</span>
+          </h3>
+          <table className="stock-table">
+            <thead>
+              <tr>
+                <th>Nguyên liệu</th>
+                <th className="num">Đã xuất</th>
+                <th className="num">Bổ sung thêm</th>
+                <th className="num">Còn lại cuối ca</th>
+                <th className="num">Hao hụt</th>
+                <th>Lý do hao hụt</th>
+              </tr>
+            </thead>
+            <tbody>
+              {s.lines.map((l) => {
+                const c = closing[l.itemId] ?? { remaining: '', waste: '', reason: '' };
+                const setC = (patch: Partial<typeof c>) => setClosing({ ...closing, [l.itemId]: { ...c, ...patch } });
+                return (
+                  <tr key={l.itemId}>
+                    <td>
+                      {l.name} <span className="muted small">{l.unit}</span>
+                    </td>
+                    <td className="num">
+                      {qty(l.issued)}
+                      {l.added > 0 && <span className="muted small"> +{qty(l.added)}</span>}
+                    </td>
+                    <td className="num">
+                      <input className="count-input" inputMode="decimal" value={amounts[`add:${l.itemId}`] ?? ''} onChange={(e) => setAmounts({ ...amounts, [`add:${l.itemId}`]: e.target.value })} placeholder="0" />
+                    </td>
+                    <td className="num">
+                      <input className="count-input" inputMode="decimal" value={c.remaining} onChange={(e) => setC({ remaining: e.target.value })} placeholder="?" />
+                    </td>
+                    <td className="num">
+                      <input className="count-input" inputMode="decimal" value={c.waste} onChange={(e) => setC({ waste: e.target.value })} placeholder="0" />
+                    </td>
+                    <td>
+                      {num(c.waste) > 0 && (
+                        <input className={c.reason.trim() ? 'count-reason' : 'count-reason need'} value={c.reason} onChange={(e) => setC({ reason: e.target.value })} placeholder="vd: cơm khê, rau dập" />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="cart-actions">
+            <button
+              className="btn secondary"
+              disabled={busy || !s.lines.some((l) => num(amounts[`add:${l.itemId}`]) > 0)}
+              onClick={() =>
+                run(
+                  () => remote(api.kitchenAdd, s.id, s.lines.filter((l) => num(amounts[`add:${l.itemId}`]) > 0).map((l) => ({ itemId: l.itemId, qty: num(amounts[`add:${l.itemId}`]) }))),
+                  'Đã ghi xuất bổ sung',
+                )
+              }
+            >
+              Ghi bổ sung
+            </button>
+            <button
+              className="btn primary big"
+              disabled={
+                busy ||
+                s.lines.some((l) => (closing[l.itemId]?.remaining ?? '') === '' || (num(closing[l.itemId]?.waste) > 0 && !closing[l.itemId]?.reason.trim()))
+              }
+              onClick={() =>
+                run(
+                  () =>
+                    remote(
+                      api.kitchenClose,
+                      s.id,
+                      s.lines.map((l) => ({
+                        itemId: l.itemId,
+                        remaining: num(closing[l.itemId].remaining) || 0,
+                        waste: num(closing[l.itemId].waste) || 0,
+                        reason: closing[l.itemId].reason.trim() || undefined,
+                      })),
+                    ),
+                  'Đã chốt bếp cuối ca, đã gửi tổng kết cho chủ cửa hàng',
+                )
+              }
+            >
+              Chốt cuối ca
+            </button>
+          </div>
+        </section>
+      )}
+
+      {history.length > 0 && (
+        <section className="kitchen-card">
+          <h3>Các ca trước</h3>
+          <table className="stock-table">
+            <thead>
+              <tr>
+                <th>Ca</th>
+                <th>Nguyên liệu</th>
+                <th className="num">Xuất</th>
+                <th className="num">Còn lại</th>
+                <th className="num">Hao hụt</th>
+                <th className="num">Đã dùng</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.flatMap((h) =>
+                h.lines.map((l, k) => (
+                  <tr key={`${h.id}-${l.itemId}`}>
+                    <td className="muted small">{k === 0 ? `${dateTime(h.openedAt)} · ${h.openedBy ?? ''}` : ''}</td>
+                    <td>{l.name}</td>
+                    <td className="num">
+                      {qty(l.issued + l.added)} {l.unit}
+                    </td>
+                    <td className="num">{l.remaining === null ? '—' : qty(l.remaining)}</td>
+                    <td className={`num ${l.waste ? 'neg' : ''}`} title={l.reason}>
+                      {l.waste ? qty(l.waste) : '—'}
+                    </td>
+                    <td className="num">
+                      <strong>{l.used === null ? '—' : `${qty(l.used)} ${l.unit}`}</strong>
+                    </td>
+                  </tr>
+                )),
+              )}
+            </tbody>
+          </table>
+        </section>
+      )}
     </>
   );
 }

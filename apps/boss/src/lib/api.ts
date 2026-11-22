@@ -1,4 +1,4 @@
-import type { InventoryItem, OpenOrder, Purchase, Shift, ShiftReport, StockMove, Stocktake, Summary, User } from '@shopflow/shared';
+import type { InventoryItem, KitchenSession, OpenOrder, Purchase, Shift, ShiftReport, StockMove, Stocktake, Summary, User } from '@shopflow/shared';
 
 /** Cart as stored by the POS inside an open bill (only the fields Boss shows). */
 export interface OpenCart {
@@ -121,6 +121,7 @@ export const api = {
   order: (c: Conn, id: string) => request<ApiOrder>(c, 'GET', `/orders/${encodeURIComponent(id)}`),
   inventory: (c: Conn) => request<{ items: InventoryItem[] }>(c, 'GET', '/inventory/items'),
   moves: (c: Conn, p: { itemId?: string; type?: string; limit?: number }) => request<{ moves: StockMove[] }>(c, 'GET', `/inventory/moves${q(p)}`),
+  kitchenSessions: (c: Conn) => request<{ sessions: KitchenSession[] }>(c, 'GET', '/kitchen/sessions'),
   stocktakes: (c: Conn) => request<{ stocktakes: Stocktake[] }>(c, 'GET', '/inventory/stocktakes'),
   purchases: (c: Conn, status?: string) => request<{ purchases: Purchase[] }>(c, 'GET', `/purchases${q({ status })}`),
   approve: (c: Conn, id: string, note: string) => request<Purchase>(c, 'POST', `/purchases/${encodeURIComponent(id)}/approve`, { note }),

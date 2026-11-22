@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "seed:demo": "node src/seed.ts --demo-sales",
     "create-owner": "node src/create-owner.ts",
-    "backup": "node --env-file-if-exists=.env src/backup.ts"
+    "backup": "node --env-file-if-exists=.env src/backup.ts",
+    "import-menu": "node --env-file-if-exists=.env src/import-menu.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

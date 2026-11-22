@@ -1,4 +1,10 @@
+import { imageSrc as sharedImageSrc } from '@shopflow/shared';
+import { getState } from './store';
+
 const vnd = new Intl.NumberFormat('vi-VN');
+
+/** Absolute URL of a product photo (null = no photo, show the letter tile). Usage: imageSrc(p.imageUrl). */
+export const imageSrc = (imageUrl: string | null | undefined) => sharedImageSrc(imageUrl, getState().settings.backendUrl);
 
 export const money = (n: number) => `${vnd.format(n)}đ`;
 
