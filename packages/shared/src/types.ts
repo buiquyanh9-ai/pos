@@ -268,6 +268,23 @@ export interface Summary {
   topProducts: { productId: string | null; name: string; category: string; qty: number; revenue: number }[];
 }
 
+/** A table's running (unpaid) bill, shared by all terminals and shown in Boss. */
+export interface OpenOrder<C = unknown> {
+  id: string;
+  deviceId: string;
+  tableName: string;
+  orderType: string;
+  note: string;
+  itemCount: number;
+  total: number;
+  cart: C;
+  cashierId: string | null;
+  cashierName: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ShiftReport {
   shift: Shift;
   summary: Summary;

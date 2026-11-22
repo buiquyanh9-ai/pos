@@ -4,7 +4,8 @@ import { load, save } from './storage';
 import { loadSettings, saveSettings, type PosSettings } from './settings';
 import { uuid } from './ids';
 import { notify } from './notify';
-import type { Category, DiningTable, LocalOrder, OptionGroup, OrderItem, OrderType, PaymentMethod, Product, Shift, ShiftReport, User } from './types';
+import type { Category, DiningTable, LocalOrder, OpenOrder, OptionGroup, OrderItem, OrderType, PaymentMethod, Product, Shift, ShiftReport, User } from './types';
+import { totalsOf, type Cart } from './cart';
 
 // Central app state outside React so the sync loop, drivers and screens share it.
 // Offline-first: a sale is committed locally first, then uploaded by the sync loop.
@@ -38,6 +39,8 @@ export interface PosState {
   categories: Category[];
   optionGroups: OptionGroup[];
   tables: DiningTable[];
+  /** Unpaid table bills from the server (all terminals). */
+  openOrders: OpenOrder<Cart>[];
   catalogAt: string | null;
   orders: LocalOrder[]; // newest first
   connection: Connection;
@@ -52,6 +55,7 @@ const K = {
   counter: 'shopflow.counter',
   session: 'shopflow.session',
   shift: 'shopflow.shift',
+  openDeletes: 'shopflow.openDeletes',
 };
 
 interface CachedCatalog {
@@ -80,6 +84,7 @@ let state: PosState = {
   categories: cached.categories,
   optionGroups: cached.optionGroups,
   tables: cached.tables,
+  openOrders: [],
   catalogAt: cached.at,
   orders: load<LocalOrder[]>(K.orders, []).map((o) => ({
     ...o,
@@ -265,6 +270,50 @@ export function retryOrder(id: string) {
 
 export const pendingCount = (s: PosState) => s.orders.filter((o) => o.sync === 'pending').length;
 
+// ---- Open bills (table orders paid later). Needs the server so every terminal sees the same bill.
+export async function refreshOpenOrders() {
+  const r = await api.openOrders(cfg());
+  set({ openOrders: r.openOrders as OpenOrder<Cart>[] });
+}
+
+/** Save the cart as an open bill. Returns the stored bill (with new version). */
+export async function saveOpenOrder(cart: Cart): Promise<OpenOrder<Cart>> {
+  if (!cart.lines.length) throw new Error('Đơn chưa có món');
+  if (cart.orderType === 'dine_in' && !cart.tableName) throw new Error('Chọn bàn trước khi lưu đơn tại quán');
+  const id = cart.openId ?? uuid();
+  const t = totalsOf(cart);
+  const stored: Cart = { ...cart, openId: id };
+  const saved = (await remote(api.saveOpenOrder, id, {
+    deviceId: state.settings.deviceId,
+    tableName: cart.tableName,
+    orderType: cart.orderType,
+    note: cart.note,
+    itemCount: t.count,
+    total: t.total,
+    cart: { ...stored, openVersion: undefined },
+    version: cart.openVersion,
+  })) as OpenOrder<Cart>;
+  void refreshOpenOrders().catch(() => undefined);
+  return saved;
+}
+
+/** Remove a bill after it was paid (or cancelled with a reason). Offline: retried by the sync loop. */
+export async function closeOpenOrder(id: string, reason?: string) {
+  try {
+    await api.deleteOpenOrder(cfg(), id, reason);
+  } catch {
+    const q = load<string[]>(K.openDeletes, []);
+    save(K.openDeletes, [...new Set([...q, id])]);
+  }
+  set({ openOrders: state.openOrders.filter((o) => o.id !== id) });
+}
+
+async function flushOpenDeletes() {
+  const q = load<string[]>(K.openDeletes, []);
+  for (const id of q) await api.deleteOpenOrder(cfg(), id);
+  if (q.length) save(K.openDeletes, []);
+}
+
 // ---- Sync
 function saveCatalog(patch: Partial<CachedCatalog>) {
   const next: CachedCatalog = {
@@ -335,6 +384,8 @@ async function doSync() {
       }
     }
     await refreshCatalog();
+    await flushOpenDeletes();
+    await refreshOpenOrders();
     const { shift } = await api.currentShift(cfg(), state.settings.deviceId);
     if (JSON.stringify(shift) !== JSON.stringify(state.shift)) setShift(shift);
     await api.heartbeat(cfg(), { id: state.settings.deviceId, name: state.settings.deviceName, appVersion: APP_VERSION });

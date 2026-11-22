@@ -28,6 +28,9 @@ export interface Cart {
   orderType: OrderType;
   tableName: string;
   note: string;
+  /** Set when this cart is a saved open bill (table order) being edited. */
+  openId?: string;
+  openVersion?: number;
 }
 
 export const emptyCart: Cart = { lines: [], discount: 0, orderType: 'dine_in', tableName: '', note: '' };
@@ -41,6 +44,7 @@ export type CartAction =
   | { type: 'orderType'; orderType: OrderType }
   | { type: 'table'; tableName: string }
   | { type: 'orderNote'; note: string }
+  | { type: 'load'; cart: Cart }
   | { type: 'clear' };
 
 const lineKey = (productId: string, note: string, options: SelectedOption[] = []) =>
@@ -108,6 +112,8 @@ export function cartReducer(c: Cart, a: CartAction): Cart {
       return { ...c, tableName: a.tableName.trim() };
     case 'orderNote':
       return { ...c, note: a.note };
+    case 'load':
+      return { ...emptyCart, ...a.cart };
     case 'clear':
       return emptyCart;
   }

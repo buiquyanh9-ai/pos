@@ -18,6 +18,7 @@ export type EventType =
   | 'shift.updated'
   | 'purchase.updated'
   | 'catalog.changed'
+  | 'open_orders.changed'
   | 'notification';
 
 export function publish(type: EventType, data: unknown, roles?: Role[]) {

@@ -211,3 +211,36 @@ h3 { font-size: 0.95rem; margin: 14px 0 6px; }
 @media (prefers-color-scheme: dark) {
   .login-brand { color: #2a3640; }
 }
+/* ---- Bright blue + orange theme: keep Boss airy and readable on mobile. */
+:root {
+  color-scheme: light;
+  --bg: #f4f8fc;
+  --surface: #ffffff;
+  --surface-2: #edf4fb;
+  --head: #2563eb;
+  --head-text: #ffffff;
+  --text: #17324d;
+  --muted: #61758a;
+  --border: #d8e5f0;
+  --accent: #f97316;
+  --accent-soft: #fff1e7;
+  --chart: #2563eb;
+  --chart-on: #f97316;
+  --grid: #d9e6f2;
+  --warn-soft: #fff7e8;
+}
+body { background: var(--bg); }
+.screen-head { background: var(--head); }
+.hero { background: linear-gradient(135deg, #2563eb, #174ea6); }
+.bottom-nav { background: #ffffff; border-top-color: var(--border); }
+.nav-item.active { color: var(--accent); }
+.card, .stat, .alert, .menu-row, .login-form { border-color: var(--border); box-shadow: 0 4px 16px rgb(23 50 77 / .05); }
+.chip.on, .seg.on { background: #2563eb; border-color: #2563eb; }
+.btn.primary { background: #2563eb; border-color: #2563eb; }
+.btn.primary:hover { background: #174ea6; }
+.link { color: #2563eb; }
+.tab.on { color: var(--accent); }
+.login { background: linear-gradient(145deg, #f4f8fc, #fff5ec); }
+.login-brand { color: #2563eb; }
+.login-brand svg { color: #2563eb; }
+.login-brand svg path { stroke: #f97316; }

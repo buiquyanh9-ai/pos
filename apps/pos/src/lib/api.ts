@@ -3,6 +3,7 @@ import type {
   DiningTable,
   InventoryItem,
   LocalOrder,
+  OpenOrder,
   OptionGroup,
   Product,
   Purchase,
@@ -139,6 +140,16 @@ export const api = {
     request<{ status: string }>(c, 'POST', `/orders/${encodeURIComponent(id)}/void`, { reason }),
   refundOrder: (c: ApiConfig, id: string, body: { reason: string; restock?: boolean; shiftId?: string }) =>
     request<{ status: string }>(c, 'POST', `/orders/${encodeURIComponent(id)}/refund`, body),
+
+  // ---- open (unpaid) bills
+  openOrders: (c: ApiConfig) => request<{ openOrders: OpenOrder[] }>(c, 'GET', '/open-orders'),
+  saveOpenOrder: (
+    c: ApiConfig,
+    id: string,
+    body: { deviceId: string; tableName: string; orderType: string; note: string; itemCount: number; total: number; cart: unknown; version?: number },
+  ) => request<OpenOrder>(c, 'PUT', `/open-orders/${encodeURIComponent(id)}`, body),
+  deleteOpenOrder: (c: ApiConfig, id: string, reason?: string) =>
+    request<null>(c, 'DELETE', `/open-orders/${encodeURIComponent(id)}`, reason ? { reason } : {}),
 
   // ---- shifts
   currentShift: (c: ApiConfig, deviceId: string) => request<{ shift: Shift | null }>(c, 'GET', `/shifts/current${q({ deviceId })}`),

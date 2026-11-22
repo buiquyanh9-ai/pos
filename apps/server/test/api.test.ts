@@ -354,3 +354,19 @@ test('options scale the recipe (size L) and add their own stock (topping); void 
   assert.equal(g.options[0].recipe[0].itemId, 'i-tran-chau');
   assert.equal((await call('POST', '/orders', order({ items: [{ productId: 'p-tra-sua', name: 'x', price: 1, qty: 1, optionIds: 'bad' }], paid: 1 }), 'cashier')).status, 400);
 });
+
+test('open orders: one per table, optimistic locking, visible on dashboard, delete when paid', async () => {
+  const cart = { lines: [{ key: 'p-cf-den::', productId: 'p-cf-den', name: 'Cà phê đen', price: 20000, qty: 2, note: '', options: [] }], discount: 0 };
+  const a = await call('PUT', '/open-orders/oo-1', { deviceId: 'pos-1', tableName: 'Bàn 3', orderType: 'dine_in', cart, itemCount: 2, total: 40000 }, 'cashier');
+  assert.equal(a.status, 200);
+  assert.equal(a.body.version, 1);
+  assert.equal((await call('PUT', '/open-orders/oo-2', { deviceId: 'pos-2', tableName: 'Bàn 3', cart, total: 1 }, 'cashier')).status, 409);
+  const b = await call('PUT', '/open-orders/oo-1', { deviceId: 'pos-2', tableName: 'Bàn 3', cart, itemCount: 3, total: 60000, version: 1 }, 'cashier');
+  assert.equal(b.body.version, 2);
+  assert.equal((await call('PUT', '/open-orders/oo-1', { deviceId: 'pos-1', tableName: 'Bàn 3', cart, total: 1, version: 1 }, 'cashier')).status, 409);
+  const d = await call('GET', '/dashboard');
+  assert.equal(d.body.openOrders.total, 60000);
+  assert.equal((await call('GET', '/open-orders')).body.openOrders[0].cart.lines[0].qty, 2);
+  assert.equal((await call('DELETE', '/open-orders/oo-1', {}, 'cashier')).status, 204);
+  assert.equal((await call('GET', '/open-orders')).body.openOrders.length, 0);
+});

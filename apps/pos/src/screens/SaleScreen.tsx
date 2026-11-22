@@ -1,7 +1,7 @@
 import { useMemo, useState, type Dispatch } from 'react';
 import { cashSuggestions, optionsLabel, qtyOfProduct, toOrderItems, totalsOf, type Cart, type CartAction } from '../lib/cart';
 import { fold, money } from '../lib/format';
-import { commitSale, getState, usePos } from '../lib/store';
+import { closeOpenOrder, commitSale, getState, refreshOpenOrders, saveOpenOrder, usePos } from '../lib/store';
 import { openDrawer, printReceipt } from '../lib/receipt';
 import { notify } from '../lib/notify';
 import { ORDER_TYPE_LABEL, PAYMENT_LABEL, type LocalOrder, type OrderType, type PaymentMethod, type Product } from '../lib/types';
@@ -18,6 +18,32 @@ interface Props {
 export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
   const products = usePos((s) => s.products);
   const tables = usePos((s) => s.tables);
+  const openOrders = usePos((s) => s.openOrders);
+  const [showOpen, setShowOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const busyTable = (name: string) => openOrders.find((o) => o.tableName === name && o.orderType === 'dine_in' && o.id !== cart.openId);
+  const resume = (id: string) => {
+    const o = getState().openOrders.find((x) => x.id === id);
+    if (!o) return;
+    if (cart.lines.length && cart.openId !== id) return notify('Lưu hoặc thanh toán đơn đang làm trước khi mở đơn khác', 'error');
+    dispatch({ type: 'load', cart: { ...o.cart, openId: o.id, openVersion: o.version } });
+    setShowOpen(false);
+  };
+  const park = async () => {
+    setSaving(true);
+    try {
+      const saved = await saveOpenOrder(cart);
+      notify(`Đã lưu đơn ${saved.tableName || ORDER_TYPE_LABEL[saved.orderType as OrderType] || ''}`, 'success');
+      dispatch({ type: 'clear' });
+      setShowCart(false);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : String(err), 'error');
+      if (String(err).includes('máy khác')) void refreshOpenOrders();
+    } finally {
+      setSaving(false);
+    }
+  };
   const [picking, setPicking] = useState<Product | null>(null);
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const add = (p: Product) => {
@@ -48,7 +74,20 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
   return (
     <div className="sale">
       <section className="catalog">
-        <div className="catalog-heading"><div><span className="eyebrow">BÁN HÀNG</span><h1>Tạo đơn hàng mới</h1></div><button className="ghost-action" onClick={() => dispatch({ type: 'clear' })}>Đơn mới <span>＋</span></button></div>
+        <div className="catalog-heading">
+          <div>
+            <span className="eyebrow">BÁN HÀNG</span>
+            <h1>{cart.openId ? `Sửa đơn ${cart.tableName || ''}` : 'Tạo đơn hàng mới'}</h1>
+          </div>
+          <div className="heading-actions">
+            <button className="ghost-action" onClick={() => (void refreshOpenOrders().catch(() => undefined), setShowOpen(true))}>
+              Đơn đang mở <span className="count">{openOrders.length}</span>
+            </button>
+            <button className="ghost-action" onClick={() => (cart.lines.length && !cart.openId ? notify('Đơn hiện tại chưa lưu: bấm Lưu đơn hoặc Xoá trước', 'error') : dispatch({ type: 'clear' }))}>
+              Đơn mới <span>＋</span>
+            </button>
+          </div>
+        </div>
         <div className="chips">
           <button className={!category ? 'chip active' : 'chip'} onClick={() => setCategory('')}>
             Tất cả
@@ -96,7 +135,16 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
                   {tables
                     .filter((t) => t.area === area)
                     .map((t) => (
-                      <button key={t.id} className={cart.tableName === t.name ? 'table-chip active' : 'table-chip'} onClick={() => dispatch({ type: 'table', tableName: cart.tableName === t.name ? '' : t.name })}>
+                      <button
+                        key={t.id}
+                        className={`table-chip${cart.tableName === t.name ? ' active' : ''}${busyTable(t.name) ? ' busy' : ''}`}
+                        title={busyTable(t.name) ? 'Bàn đang có đơn: chạm để mở' : undefined}
+                        onClick={() => {
+                          const b = busyTable(t.name);
+                          if (b) return resume(b.id);
+                          dispatch({ type: 'table', tableName: cart.tableName === t.name ? '' : t.name });
+                        }}
+                      >
                         {t.name}
                       </button>
                     ))}
@@ -144,8 +192,11 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
             <span>{money(t.total)}</span>
           </div>
           <div className="cart-actions">
-            <button className="btn secondary" disabled={!cart.lines.length} onClick={() => dispatch({ type: 'clear' })}>
-              Xoá
+            <button className="btn secondary" disabled={!cart.lines.length && !cart.openId} onClick={() => (cart.openId ? setCancelling(true) : dispatch({ type: 'clear' }))}>
+              {cart.openId ? 'Huỷ đơn' : 'Xoá'}
+            </button>
+            <button className="btn secondary" disabled={!cart.lines.length || saving} onClick={() => void park()}>
+              {cart.openId ? 'Cập nhật đơn' : 'Lưu đơn'}
             </button>
             <button className="btn primary big" disabled={!cart.lines.length} onClick={() => setPaying(true)}>
               Thanh toán
@@ -178,6 +229,7 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
           onPay={(method, paid) => {
             try {
               const order = commitSale({ items: toOrderItems(cart), discount: t.discount, paymentMethod: method, paid, orderType: cart.orderType, tableName: cart.tableName, note: cart.note });
+              if (cart.openId) void closeOpenOrder(cart.openId);
               dispatch({ type: 'clear' });
               setPaying(false);
               setShowCart(false);
@@ -192,6 +244,34 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
         />
       )}
       {done && <DoneDialog order={done} onClose={() => setDone(null)} />}
+      {showOpen && (
+        <Modal title={`Đơn đang mở (${openOrders.length})`} onClose={() => setShowOpen(false)} wide>
+          {openOrders.length === 0 && <p className="empty">Không có đơn nào đang mở</p>}
+          <div className="open-grid">
+            {openOrders.map((o) => (
+              <button key={o.id} className={o.id === cart.openId ? 'open-card active' : 'open-card'} onClick={() => resume(o.id)}>
+                <strong>{o.tableName || ORDER_TYPE_LABEL[o.orderType as OrderType] || 'Đơn'}</strong>
+                <span className="open-total">{money(o.total)}</span>
+                <small className="muted">
+                  {o.itemCount} món · {o.cashierName ?? ''} · {new Date(o.updatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                </small>
+                {o.note && <small className="muted">{o.note}</small>}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
+      {cancelling && cart.openId && (
+        <CancelOpenDialog
+          onClose={() => setCancelling(false)}
+          onConfirm={(reason) => {
+            void closeOpenOrder(cart.openId!, reason);
+            dispatch({ type: 'clear' });
+            setCancelling(false);
+            notify('Đã huỷ đơn đang mở', 'success');
+          }}
+        />
+      )}
       {picking && (
         <OptionPicker
           product={picking}
@@ -219,6 +299,26 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
         );
       })()}
     </div>
+  );
+}
+
+function CancelOpenDialog({ onConfirm, onClose }: { onConfirm: (reason: string) => void; onClose: () => void }) {
+  const [reason, setReason] = useState('');
+  return (
+    <Modal title="Huỷ đơn đang mở" onClose={onClose}>
+      <p className="muted">Đơn chưa thanh toán sẽ bị xoá. Lý do được ghi vào lịch sử thao tác.</p>
+      <div className="opt-row">
+        {['Khách huỷ', 'Gọi nhầm', 'Khách đi không ăn', 'Gộp vào đơn khác'].map((r) => (
+          <button key={r} className={reason === r ? 'opt on' : 'opt'} onClick={() => setReason(r)}>
+            {r}
+          </button>
+        ))}
+      </div>
+      <input className="opt-note" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Lý do (bắt buộc)" />
+      <button className="btn primary big full" disabled={!reason.trim()} onClick={() => onConfirm(reason.trim())}>
+        Xác nhận huỷ
+      </button>
+    </Modal>
   );
 }
 

@@ -234,6 +234,21 @@ CREATE TABLE IF NOT EXISTS order_items (
 );
 CREATE INDEX IF NOT EXISTS idx_items_order ON order_items(order_id);
 
+CREATE TABLE IF NOT EXISTS open_orders (
+  id          TEXT PRIMARY KEY,
+  device_id   TEXT NOT NULL,
+  table_name  TEXT NOT NULL DEFAULT '',
+  order_type  TEXT NOT NULL DEFAULT 'dine_in',
+  note        TEXT NOT NULL DEFAULT '',
+  item_count  INTEGER NOT NULL DEFAULT 0,
+  total       INTEGER NOT NULL DEFAULT 0,
+  cart        TEXT NOT NULL,
+  cashier_id  TEXT,
+  version     INTEGER NOT NULL DEFAULT 1,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS devices (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
