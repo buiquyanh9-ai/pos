@@ -3,12 +3,12 @@ import { api, type ProductInput } from '../lib/api';
 import { money } from '../lib/format';
 import { notify } from '../lib/notify';
 import { remote, syncNow } from '../lib/store';
-import { ROLE_LABEL, type Category, type DiningTable, type InventoryItem, type OptionGroup, type Product, type Role, type User } from '../lib/types';
+import { ROLE_LABEL, type Category, type DiningTable, type InventoryItem, type OptionGroup, type Product, type Role, type Supplier, type User } from '../lib/types';
 import { Modal } from '../components/Modal';
 
 // Owner back-office on the POS: menu (products, prices, categories, options, recipes), tables, staff, stock items.
 
-type Section = 'products' | 'options' | 'tables' | 'items' | 'staff';
+type Section = 'products' | 'options' | 'tables' | 'items' | 'suppliers' | 'staff';
 type AdminProduct = Product & { recipe: { itemId: string; itemName: string; unit: string; qty: number }[] };
 const fail = (e: unknown) => notify(e instanceof Error ? e.message : String(e), 'error');
 const num = (s: string) => Number(s.replace(/\./g, '').replace(',', '.'));
@@ -38,6 +38,7 @@ export function AdminScreen() {
     ['products', 'Món & giá bán'],
     ['options', 'Tuỳ chọn món'],
     ['items', 'Nguyên liệu / hàng hoá'],
+    ['suppliers', 'Nhà cung cấp'],
     ['tables', 'Bàn'],
     ['staff', 'Nhân viên'],
   ];
@@ -56,6 +57,7 @@ export function AdminScreen() {
         {section === 'options' && <Options groups={groups} items={items} onChanged={reload} />}
         {section === 'items' && <Items items={items} onChanged={reload} />}
         {section === 'tables' && <Tables />}
+        {section === 'suppliers' && <Suppliers />}
         {section === 'staff' && <Staff />}
       </section>
     </div>
@@ -550,6 +552,87 @@ function Tables() {
         </section>
       ))}
     </>
+  );
+}
+
+// ---------------------------------------------------------------- suppliers
+function Suppliers() {
+  const [list, setList] = useState<Supplier[]>([]);
+  const [editing, setEditing] = useState<Supplier | 'new' | null>(null);
+  const reload = useCallback(() => remote(api.suppliers).then((r) => setList(r.suppliers)).catch(fail), []);
+  useEffect(() => void reload(), [reload]);
+  return (
+    <>
+      <div className="stock-actions">
+        <button className="btn primary" onClick={() => setEditing('new')}>
+          ＋ Nhà cung cấp
+        </button>
+      </div>
+      <table className="stock-table">
+        <thead>
+          <tr>
+            <th>Tên</th>
+            <th>Điện thoại</th>
+            <th>Ghi chú</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((s) => (
+            <tr key={s.id} className="clickable" onClick={() => setEditing(s)}>
+              <td>
+                <strong>{s.name}</strong>
+              </td>
+              <td>{s.phone}</td>
+              <td className="muted">{s.note}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!list.length && <p className="empty">Chưa có nhà cung cấp</p>}
+      {editing && <SupplierForm supplier={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => (setEditing(null), reload())} />}
+    </>
+  );
+}
+
+function SupplierForm({ supplier: s, onClose, onSaved }: { supplier: Supplier | null; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(s?.name ?? '');
+  const [phone, setPhone] = useState(s?.phone ?? '');
+  const [note, setNote] = useState(s?.note ?? '');
+  return (
+    <Modal title={s ? `Nhà cung cấp: ${s.name}` : 'Nhà cung cấp mới'} onClose={onClose}>
+      <div className="admin-form">
+        <label className="field">
+          Tên
+          <input value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label className="field">
+          Điện thoại
+          <input inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </label>
+        <label className="field">
+          Ghi chú (mặt hàng, lịch giao…)
+          <input value={note} onChange={(e) => setNote(e.target.value)} />
+        </label>
+        <div className="cart-actions">
+          {s && (
+            <button className="btn secondary" onClick={() => remote(api.saveSupplier, s.id, { active: false }).then(onSaved).catch(fail)}>
+              Ngừng hợp tác
+            </button>
+          )}
+          <button
+            className="btn primary big"
+            disabled={!name.trim()}
+            onClick={() =>
+              remote(api.saveSupplier, s?.id ?? null, { name: name.trim(), phone: phone.trim(), note: note.trim() })
+                .then(() => (notify('Đã lưu nhà cung cấp', 'success'), onSaved()))
+                .catch(fail)
+            }
+          >
+            Lưu
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

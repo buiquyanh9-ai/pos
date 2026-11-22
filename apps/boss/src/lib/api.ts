@@ -127,6 +127,12 @@ export const api = {
   reject: (c: Conn, id: string, note: string) => request<Purchase>(c, 'POST', `/purchases/${encodeURIComponent(id)}/reject`, { note }),
   shifts: (c: Conn, from?: string, to?: string) => request<{ shifts: Shift[] }>(c, 'GET', `/shifts${q({ from, to })}`),
   shiftReport: (c: Conn, id: string) => request<ShiftReport>(c, 'GET', `/shifts/${encodeURIComponent(id)}/report`),
+  audit: (c: Conn) =>
+    request<{ entries: { id: number; userName: string | null; action: string; entity: string; entityId: string | null; data: Record<string, unknown> | null; at: string }[] }>(
+      c,
+      'GET',
+      '/audit?limit=200',
+    ),
   notifications: (c: Conn) => request<{ notifications: Notification[]; unread: number }>(c, 'GET', '/notifications?limit=100'),
   markRead: (c: Conn, ids: number[] | 'all') => request(c, 'POST', '/notifications/read', { ids }),
   prefs: (c: Conn) => request<{ prefs: { type: string; label: string; enabled: boolean }[]; pushEnabled: boolean }>(c, 'GET', '/notifications/prefs'),

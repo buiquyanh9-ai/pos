@@ -212,6 +212,9 @@ export const api = {
     body: { name?: string; unit?: string; kind?: 'ingredient' | 'goods'; minQty?: number; unitCost?: number; qty?: number; supplierId?: string | null; active?: boolean },
   ) => (id ? request<InventoryItem>(c, 'PUT', `/inventory/items/${encodeURIComponent(id)}`, body) : request<InventoryItem>(c, 'POST', '/inventory/items', body)),
 
+  saveSupplier: (c: ApiConfig, id: string | null, body: { name?: string; phone?: string; note?: string; active?: boolean }) =>
+    id ? request<Supplier>(c, 'PUT', `/suppliers/${encodeURIComponent(id)}`, body) : request<Supplier>(c, 'POST', '/suppliers', body),
+
   // ---- devices
   heartbeat: (c: ApiConfig, d: { id: string; name: string; appVersion: string }) =>
     request<{ ok: boolean }>(c, 'POST', '/devices/heartbeat', { ...d, kind: 'pos' }, 4000),

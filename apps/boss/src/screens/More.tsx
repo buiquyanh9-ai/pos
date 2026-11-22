@@ -87,6 +87,66 @@ function PrefsSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
+const ACTION_LABEL: Record<string, string> = {
+  login: 'Đăng nhập',
+  'login.failed': 'Đăng nhập sai',
+  'order.void': 'Huỷ đơn',
+  'order.refund': 'Hoàn tiền',
+  'open_order.cancel': 'Huỷ đơn chưa thanh toán',
+  'shift.open': 'Mở ca',
+  'shift.close': 'Đóng ca',
+  'inventory.adjust': 'Điều chỉnh kho',
+  'inventory.create': 'Thêm mặt hàng kho',
+  'inventory.update': 'Sửa mặt hàng kho',
+  'stocktake.create': 'Kiểm kê',
+  'purchase.create': 'Tạo đề xuất nhập',
+  'purchase.approve': 'Duyệt nhập hàng',
+  'purchase.reject': 'Từ chối nhập hàng',
+  'purchase.receive': 'Nhận hàng',
+  'product.create': 'Thêm món',
+  'product.update': 'Sửa món',
+  'product.delete': 'Ngừng bán món',
+  'user.create': 'Thêm nhân viên',
+  'user.update': 'Sửa nhân viên',
+};
+
+function AuditSheet({ onClose }: { onClose: () => void }) {
+  const [onlyImportant, setOnlyImportant] = useState(true);
+  const { data, error, loading } = useRemote(api.audit, [], { live: false });
+  const important = (a: string) => !a.startsWith('login') || a === 'login.failed';
+  const rows = (data?.entries ?? []).filter((e) => !onlyImportant || important(e.action));
+  return (
+    <Sheet title="Lịch sử thao tác" onClose={onClose}>
+      <div className="row">
+        <span>Ẩn đăng nhập thành công</span>
+        <button role="switch" aria-checked={onlyImportant} className={onlyImportant ? 'switch on' : 'switch'} onClick={() => setOnlyImportant(!onlyImportant)}>
+          <span />
+        </button>
+      </div>
+      <Loading error={error} loading={loading && !data} />
+      <ul className="list">
+        {rows.map((e) => {
+          const d = e.data ?? {};
+          const detail = [d.reason, d.total !== undefined ? money(Number(d.total)) : null, d.tableName, d.delta !== undefined ? `${Number(d.delta) > 0 ? '+' : ''}${d.delta}` : null]
+            .filter(Boolean)
+            .join(' · ');
+          return (
+            <li key={e.id} className="row">
+              <span className="grow">
+                <strong>{ACTION_LABEL[e.action] ?? e.action}</strong>
+                <span className="muted small">
+                  {e.userName ?? (e.action === 'login.failed' ? `tài khoản ${e.entityId}` : 'Hệ thống')} · {dateTimeLocal(e.at)}
+                  {detail && ` · ${detail}`}
+                </span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </Sheet>
+  );
+}
+
 export function More({ openNotifications }: { openNotifications: () => void }) {
   const user = useBoss((s) => s.session?.user);
   const url = useBoss((s) => s.url);
@@ -94,6 +154,7 @@ export function More({ openNotifications }: { openNotifications: () => void }) {
   const week = presetRange('last7');
   const { data, error, loading } = useRemote((c) => api.shifts(c, week.from, week.to), []);
   const [shiftId, setShiftId] = useState<string | null>(null);
+  const [showAudit, setShowAudit] = useState(false);
   return (
     <div className="screen">
       <Header title="Thêm" />
@@ -101,6 +162,10 @@ export function More({ openNotifications }: { openNotifications: () => void }) {
         <button className="menu-row" onClick={openNotifications}>
           <span>🔔 Thông báo</span>
           {unread > 0 && <span className="badge inline">{unread}</span>}
+          <span className="chev">›</span>
+        </button>
+        <button className="menu-row" onClick={() => setShowAudit(true)}>
+          <span>🕘 Lịch sử thao tác (huỷ đơn, hoàn tiền, điều chỉnh kho…)</span>
           <span className="chev">›</span>
         </button>
         <Card title="Ca làm việc 7 ngày qua">
@@ -141,6 +206,7 @@ export function More({ openNotifications }: { openNotifications: () => void }) {
         </Card>
       </div>
       {shiftId && <ShiftSheet id={shiftId} onClose={() => setShiftId(null)} />}
+      {showAudit && <AuditSheet onClose={() => setShowAudit(false)} />}
     </div>
   );
 }
