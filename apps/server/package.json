@@ -8,7 +8,9 @@
     "start": "node --env-file-if-exists=.env src/index.ts",
     "seed": "node src/seed.ts",
     "test": "node --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed:demo": "node src/seed.ts --demo-sales",
+    "create-owner": "node src/create-owner.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

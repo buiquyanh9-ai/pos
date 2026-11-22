@@ -4,12 +4,12 @@ import { load, save } from './storage';
 import { loadSettings, saveSettings, type PosSettings } from './settings';
 import { uuid } from './ids';
 import { notify } from './notify';
-import type { LocalOrder, OrderItem, OrderType, PaymentMethod, Product } from './types';
+import type { Category, DiningTable, LocalOrder, OptionGroup, OrderItem, OrderType, PaymentMethod, Product, Shift, ShiftReport, User } from './types';
 
 // Central app state outside React so the sync loop, drivers and screens share it.
 // Offline-first: a sale is committed locally first, then uploaded by the sync loop.
 
-export const APP_VERSION = '0.1.0';
+export const APP_VERSION = '0.2.0';
 const SYNC_INTERVAL_MS = 15_000;
 const KEEP_SYNCED_ORDERS = 500;
 
@@ -20,12 +20,24 @@ export const CONNECTION_LABEL: Record<Connection, string> = {
   checking: 'Đang kết nối…',
   online: 'Trực tuyến',
   offline: 'Ngoại tuyến',
-  unauthorized: 'Sai API key',
+  unauthorized: 'Cần đăng nhập lại',
 };
+
+export interface Session {
+  token: string;
+  expiresAt: string;
+  user: User;
+}
 
 export interface PosState {
   settings: PosSettings;
+  session: Session | null;
+  /** Open shift of this device (null = no shift open). */
+  shift: Shift | null;
   products: Product[];
+  categories: Category[];
+  optionGroups: OptionGroup[];
+  tables: DiningTable[];
   catalogAt: string | null;
   orders: LocalOrder[]; // newest first
   connection: Connection;
@@ -34,13 +46,49 @@ export interface PosState {
   lastSyncAt: string | null;
 }
 
-const K = { catalog: 'shopflow.catalog', orders: 'shopflow.orders', counter: 'shopflow.counter' };
+const K = {
+  catalog: 'shopflow.catalog',
+  orders: 'shopflow.orders',
+  counter: 'shopflow.counter',
+  session: 'shopflow.session',
+  shift: 'shopflow.shift',
+};
+
+interface CachedCatalog {
+  products: Product[];
+  categories: Category[];
+  optionGroups: OptionGroup[];
+  tables: DiningTable[];
+  at: string | null;
+}
+
+function loadCatalog(): CachedCatalog {
+  const c = load<CachedCatalog | Product[] | null>(K.catalog, null);
+  // v0.1 cached a bare product array without the v2 fields.
+  if (!c || Array.isArray(c)) return { products: [], categories: [], optionGroups: [], tables: [], at: null };
+  return c;
+}
+
+const cached = loadCatalog();
+const savedSession = load<Session | null>(K.session, null);
 
 let state: PosState = {
   settings: loadSettings(),
-  products: load<Product[]>(K.catalog, []),
-  catalogAt: load<string | null>(`${K.catalog}.at`, null),
-  orders: load<LocalOrder[]>(K.orders, []).map((o) => ({ ...o, orderType: o.orderType ?? 'dine_in', tableName: o.tableName ?? '', note: o.note ?? '' })),
+  session: savedSession && savedSession.expiresAt > new Date().toISOString() ? savedSession : null,
+  shift: load<Shift | null>(K.shift, null),
+  products: cached.products,
+  categories: cached.categories,
+  optionGroups: cached.optionGroups,
+  tables: cached.tables,
+  catalogAt: cached.at,
+  orders: load<LocalOrder[]>(K.orders, []).map((o) => ({
+    ...o,
+    orderType: o.orderType ?? 'dine_in',
+    tableName: o.tableName ?? '',
+    note: o.note ?? '',
+    shiftId: o.shiftId ?? null,
+    cashierId: o.cashierId ?? null,
+  })),
   connection: 'checking',
   syncing: false,
   lastError: null,
@@ -57,11 +105,20 @@ export function subscribe(l: () => void) {
   listeners.add(l);
   return () => void listeners.delete(l);
 }
+/** Select from the store. The selector must return a stable value (a state field or a primitive). */
 export function usePos<T>(selector: (s: PosState) => T): T {
   return useSyncExternalStore(subscribe, () => selector(state));
 }
 
-const cfg = (): ApiConfig => ({ backendUrl: state.settings.backendUrl, apiKey: state.settings.apiKey });
+export const cfg = (): ApiConfig => ({ backendUrl: state.settings.backendUrl, token: state.session?.token, apiKey: state.settings.apiKey });
+
+/** Call any API function with the current server + session, e.g. `remote(api.inventory)`. */
+export function remote<A extends unknown[], R>(fn: (c: ApiConfig, ...args: A) => Promise<R>, ...args: A): Promise<R> {
+  return fn(cfg(), ...args).catch((err) => {
+    if (err instanceof ApiError && err.status === 401) set({ connection: 'unauthorized' });
+    throw err;
+  });
+}
 
 function persistOrders(orders: LocalOrder[]) {
   // Never drop unsynced orders; trim only old synced/rejected ones.
@@ -77,6 +134,50 @@ export function updateSettings(next: PosSettings) {
   saveSettings(next);
   set({ settings: next });
   if (changedServer) void syncNow();
+}
+
+// ---- Session (PIN login)
+export const isLoggedIn = (s: PosState) => Boolean(s.session);
+
+export async function login(username: string, pin: string) {
+  const r = await api.login(cfg(), { username, pin, client: `pos:${state.settings.deviceId}` });
+  const session: Session = { token: r.token, expiresAt: r.expiresAt, user: r.user };
+  save(K.session, session);
+  set({ session, connection: 'checking' });
+  await syncNow();
+  return r.user;
+}
+
+/** Log out the cashier. Pending orders stay queued and upload after the next login. */
+export async function logout() {
+  const token = state.session?.token;
+  save(K.session, null);
+  set({ session: null });
+  if (token) await api.logout({ ...cfg(), token }).catch(() => undefined);
+}
+
+// ---- Shift
+function setShift(shift: Shift | null) {
+  save(K.shift, shift);
+  set({ shift });
+}
+
+export async function openShift(openingCash: number) {
+  const shift = await remote(api.openShift, state.settings.deviceId, openingCash);
+  setShift(shift);
+  return shift;
+}
+
+/** Close the shift: pending orders are uploaded first so the report is complete. */
+export async function closeShift(countedCash: number, note = ''): Promise<ShiftReport> {
+  if (!state.shift) throw new Error('Chưa mở ca');
+  await syncNow();
+  if (state.orders.some((o) => o.sync === 'pending' && o.shiftId === state.shift!.id)) {
+    throw new Error('Còn đơn chưa gửi lên máy chủ. Kiểm tra kết nối rồi thử lại.');
+  }
+  const report = await remote(api.closeShift, state.shift.id, countedCash, note);
+  setShift(null);
+  return report;
 }
 
 // ---- Orders
@@ -105,13 +206,17 @@ export function commitSale(sale: NewSale): LocalOrder {
   const discount = Math.min(sale.discount, subtotal);
   const total = subtotal - discount;
   if (sale.paid < total) throw new Error('Số tiền khách đưa chưa đủ');
+  if (sale.paymentMethod !== 'cash' && sale.paid !== total) throw new Error('Chỉ thanh toán tiền mặt mới có tiền thối');
+  const user = state.session?.user;
   const order: LocalOrder = {
     id: uuid(),
     number: nextOrderNumber(),
     deviceId: state.settings.deviceId,
-    cashier: state.settings.cashier,
+    shiftId: state.shift?.id ?? null,
+    cashierId: user?.id ?? null,
+    cashier: user?.name ?? state.settings.cashier,
     orderType: sale.orderType,
-    tableName: sale.tableName,
+    tableName: sale.orderType === 'dine_in' ? sale.tableName : '',
     note: sale.note.trim(),
     items: sale.items,
     subtotal,
@@ -125,25 +230,32 @@ export function commitSale(sale: NewSale): LocalOrder {
     sync: 'pending',
   };
   persistOrders([order, ...state.orders]);
-  // Optimistic local stock so the grid reflects the sale while offline.
-  const sold = new Map(sale.items.filter((i) => i.productId).map((i) => [i.productId!, i.qty]));
+  // Optimistic local availability so the grid reflects the sale while offline (server recomputes from BOM).
+  const sold = new Map<string, number>();
+  for (const i of sale.items) if (i.productId) sold.set(i.productId, (sold.get(i.productId) ?? 0) + i.qty);
   if (sold.size) {
-    const products = state.products.map((p) => (sold.has(p.id) ? { ...p, stock: p.stock - sold.get(p.id)! } : p));
-    save(K.catalog, products);
-    set({ products });
+    const products = state.products.map((p) => (sold.has(p.id) && p.stock !== null ? { ...p, stock: Math.max(0, p.stock - sold.get(p.id)!) } : p));
+    saveCatalog({ products });
   }
   void syncNow();
   return order;
 }
 
-export async function voidOrder(id: string) {
+async function changeOrderStatus(id: string, kind: 'void' | 'refund', reason: string, restock = false) {
   const o = state.orders.find((x) => x.id === id);
-  if (!o) return;
-  if (o.sync !== 'synced') throw new Error('Đơn chưa đồng bộ lên máy chủ, chưa thể huỷ');
-  await api.voidOrder(cfg(), id);
-  persistOrders(state.orders.map((x) => (x.id === id ? { ...x, status: 'voided' } : x)));
-  void refreshCatalog();
+  if (!o) throw new Error('Không tìm thấy đơn');
+  if (o.sync !== 'synced') throw new Error('Đơn chưa đồng bộ lên máy chủ, chưa thể huỷ/hoàn tiền');
+  if (!reason.trim()) throw new Error('Vui lòng nhập lý do');
+  if (kind === 'void') await remote(api.voidOrder, id, reason.trim());
+  else await remote(api.refundOrder, id, { reason: reason.trim(), restock, shiftId: state.shift?.id });
+  persistOrders(state.orders.map((x) => (x.id === id ? { ...x, status: kind === 'void' ? 'voided' : 'refunded', statusReason: reason.trim() } : x)));
+  void refreshCatalog().catch(() => undefined);
 }
+
+/** Cancel a mistaken order (stock goes back). */
+export const voidOrder = (id: string, reason: string) => changeOrderStatus(id, 'void', reason);
+/** Give the money back. restock=true only if the goods can be resold (e.g. unopened bottle). */
+export const refundOrder = (id: string, reason: string, restock = false) => changeOrderStatus(id, 'refund', reason, restock);
 
 /** Put a rejected order back in the queue (e.g. after fixing data on the server). */
 export function retryOrder(id: string) {
@@ -154,11 +266,21 @@ export function retryOrder(id: string) {
 export const pendingCount = (s: PosState) => s.orders.filter((o) => o.sync === 'pending').length;
 
 // ---- Sync
+function saveCatalog(patch: Partial<CachedCatalog>) {
+  const next: CachedCatalog = {
+    products: patch.products ?? state.products,
+    categories: patch.categories ?? state.categories,
+    optionGroups: patch.optionGroups ?? state.optionGroups,
+    tables: patch.tables ?? state.tables,
+    at: patch.at ?? state.catalogAt,
+  };
+  save(K.catalog, next);
+  set({ products: next.products, categories: next.categories, optionGroups: next.optionGroups, tables: next.tables, catalogAt: next.at });
+}
+
 async function refreshCatalog() {
-  const { products, serverTime } = await api.products(cfg());
-  save(K.catalog, products);
-  save(`${K.catalog}.at`, serverTime);
-  set({ products, catalogAt: serverTime });
+  const [cat, tables] = await Promise.all([api.catalog(cfg()), api.tables(cfg())]);
+  saveCatalog({ products: cat.products, categories: cat.categories, optionGroups: cat.optionGroups, tables: tables.tables, at: cat.serverTime });
 }
 
 let inFlight: Promise<void> | null = null;
@@ -185,6 +307,16 @@ async function doSync() {
     set({ connection: 'unconfigured' });
     return;
   }
+  if (!state.session && !state.settings.apiKey) {
+    // Not logged in: only check that the server answers, so the login screen can show status.
+    try {
+      await api.health(cfg());
+      set({ connection: 'unauthorized', lastError: null });
+    } catch (err) {
+      set({ connection: 'offline', lastError: err instanceof Error ? err.message : String(err) });
+    }
+    return;
+  }
   set({ syncing: true });
   try {
     // Upload oldest pending orders first.
@@ -203,10 +335,16 @@ async function doSync() {
       }
     }
     await refreshCatalog();
+    const { shift } = await api.currentShift(cfg(), state.settings.deviceId);
+    if (JSON.stringify(shift) !== JSON.stringify(state.shift)) setShift(shift);
     await api.heartbeat(cfg(), { id: state.settings.deviceId, name: state.settings.deviceName, appVersion: APP_VERSION });
     set({ connection: 'online', lastError: null, lastSyncAt: new Date().toISOString() });
   } catch (err) {
     const status = err instanceof ApiError ? err.status : 0;
+    if (status === 401 && state.session) {
+      save(K.session, null);
+      set({ session: null });
+    }
     set({
       connection: status === 401 ? 'unauthorized' : 'offline',
       lastError: err instanceof Error ? err.message : String(err),

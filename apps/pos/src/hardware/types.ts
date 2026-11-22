@@ -28,7 +28,7 @@ export interface ReceiptData {
   subtotal: number;
   discount: number;
   total: number;
-  paymentMethod: 'cash' | 'card' | 'transfer';
+  paymentMethod: 'cash' | 'card' | 'transfer' | 'qr';
   paid: number;
   change: number;
   footer?: string;

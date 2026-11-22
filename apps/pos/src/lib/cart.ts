@@ -8,7 +8,19 @@ export interface CartLine {
   price: number;
   qty: number;
   note: string;
+  /** Chosen options (size, đá, topping...). price already includes their surcharges. */
+  options: SelectedOption[];
 }
+
+export interface SelectedOption {
+  groupId: string;
+  optionId: string;
+  name: string;
+  priceDelta: number;
+}
+
+/** "L, Ít đá, Thêm trân châu" */
+export const optionsLabel = (opts: SelectedOption[]) => opts.map((o) => o.name).join(', ');
 
 export interface Cart {
   lines: CartLine[];
@@ -21,7 +33,7 @@ export interface Cart {
 export const emptyCart: Cart = { lines: [], discount: 0, orderType: 'dine_in', tableName: '', note: '' };
 
 export type CartAction =
-  | { type: 'add'; product: Product; qty?: number; note?: string }
+  | { type: 'add'; product: Product; qty?: number; note?: string; options?: SelectedOption[] }
   | { type: 'setQty'; key: string; qty: number }
   | { type: 'setNote'; key: string; note: string }
   | { type: 'remove'; key: string }
@@ -31,7 +43,8 @@ export type CartAction =
   | { type: 'orderNote'; note: string }
   | { type: 'clear' };
 
-const lineKey = (productId: string, note: string) => `${productId}::${note.trim()}`;
+const lineKey = (productId: string, note: string, options: SelectedOption[] = []) =>
+  `${productId}:${options.map((o) => o.optionId).sort().join('+')}:${note.trim()}`;
 
 export function subtotalOf(c: Cart) {
   return c.lines.reduce((s, l) => s + l.price * l.qty, 0);
@@ -58,11 +71,13 @@ export function cartReducer(c: Cart, a: CartAction): Cart {
     case 'add': {
       const qty = a.qty ?? 1;
       const note = (a.note ?? '').trim();
-      const key = lineKey(a.product.id, note);
+      const options = a.options ?? [];
+      const key = lineKey(a.product.id, note, options);
+      const price = a.product.price + options.reduce((s, o) => s + o.priceDelta, 0);
       const existing = c.lines.find((l) => l.key === key);
       const lines = existing
         ? c.lines.map((l) => (l.key === key ? { ...l, qty: l.qty + qty } : l))
-        : [...c.lines, { key, productId: a.product.id, name: a.product.name, price: a.product.price, qty, note }];
+        : [...c.lines, { key, productId: a.product.id, name: a.product.name, price, qty, note, options }];
       return { ...c, lines };
     }
     case 'setQty': {
@@ -74,7 +89,7 @@ export function cartReducer(c: Cart, a: CartAction): Cart {
       const line = c.lines.find((l) => l.key === a.key);
       if (!line) return c;
       const note = a.note.trim();
-      const key = lineKey(line.productId, note);
+      const key = lineKey(line.productId, note, line.options);
       if (key === line.key) return c;
       // Merge into an existing line that already has this note.
       const target = c.lines.find((l) => l.key === key);
@@ -106,6 +121,7 @@ export function toOrderItems(c: Cart): OrderItem[] {
     qty: l.qty,
     lineTotal: l.price * l.qty,
     ...(l.note ? { note: l.note } : {}),
+    ...(l.options.length ? { options: optionsLabel(l.options) } : {}),
   }));
 }
 

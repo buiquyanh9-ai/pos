@@ -4,7 +4,7 @@ import { fold } from './format';
 import type { Product } from './types';
 
 const p = (id: string, price: number): Product => ({
-  id, sku: id, barcode: null, name: id, category: '', imageUrl: null, price, stock: 10, active: true, updatedAt: '',
+  id, sku: id, barcode: null, name: id, categoryId: null, category: '', imageUrl: null, price, cost: null, stock: 10, active: true, optionGroups: [], updatedAt: '',
 });
 
 describe('cart', () => {
@@ -36,6 +36,15 @@ describe('cart', () => {
     c = cartReducer(c, { type: 'setNote', key: 'a::', note: 'Ít đá' });
     expect(c.lines).toHaveLength(1);
     expect(c.lines[0]).toMatchObject({ qty: 2, note: 'Ít đá' });
+  });
+
+  it('options change the unit price and split lines', () => {
+    const L = { groupId: 'g-size', optionId: 'L', name: 'L', priceDelta: 6000 };
+    let c = cartReducer(emptyCart, { type: 'add', product: p('a', 20000), options: [L] });
+    c = cartReducer(c, { type: 'add', product: p('a', 20000) });
+    expect(c.lines).toHaveLength(2);
+    expect(c.lines[0].price).toBe(26000);
+    expect(totalsOf(c).subtotal).toBe(46000);
   });
 
   it('clears table when switching away from dine-in', () => {

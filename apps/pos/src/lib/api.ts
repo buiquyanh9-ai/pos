@@ -1,4 +1,19 @@
-import type { LocalOrder, Product } from './types';
+import type {
+  Category,
+  DiningTable,
+  InventoryItem,
+  LocalOrder,
+  OptionGroup,
+  Product,
+  Purchase,
+  Shift,
+  ShiftReport,
+  StockMove,
+  Stocktake,
+  Summary,
+  Supplier,
+  User,
+} from './types';
 
 export class ApiError extends Error {
   status: number;
@@ -6,8 +21,8 @@ export class ApiError extends Error {
     super(message);
     this.status = status;
   }
-  /** 4xx (except 401/408/429) means the order itself is wrong; retrying will not help.
-   *  401 is excluded because fixing the API key in Settings makes the retry succeed. */
+  /** 4xx (except 401/408/429) means the request itself is wrong; retrying will not help.
+   *  401 is excluded because logging in again makes the retry succeed. */
   get permanent() {
     return this.status >= 400 && this.status < 500 && ![401, 408, 429].includes(this.status);
   }
@@ -15,7 +30,10 @@ export class ApiError extends Error {
 
 export interface ApiConfig {
   backendUrl: string;
-  apiKey: string;
+  /** Session token from /auth/login. */
+  token?: string;
+  /** Optional service key (legacy / kiosk setups). */
+  apiKey?: string;
 }
 
 async function request<T>(cfg: ApiConfig, method: string, path: string, body?: unknown, timeoutMs = 8000): Promise<T> {
@@ -28,7 +46,7 @@ async function request<T>(cfg: ApiConfig, method: string, path: string, body?: u
       method,
       headers: {
         ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
-        ...(cfg.apiKey ? { 'x-api-key': cfg.apiKey } : {}),
+        ...(cfg.token ? { authorization: `Bearer ${cfg.token}` } : cfg.apiKey ? { 'x-api-key': cfg.apiKey } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: ctrl.signal,
@@ -52,6 +70,14 @@ async function request<T>(cfg: ApiConfig, method: string, path: string, body?: u
   return data as T;
 }
 
+const q = (params: Record<string, string | number | undefined | null>) => {
+  const s = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+    .join('&');
+  return s ? `?${s}` : '';
+};
+
 export interface Health {
   ok: boolean;
   apiVersion: string;
@@ -59,35 +85,86 @@ export interface Health {
   auth: 'disabled' | 'missing' | 'invalid' | 'ok';
 }
 
-export interface Summary {
-  orderCount: number;
-  revenue: number;
-  discount: number;
-  byPayment: { method: string; count: number; amount: number }[];
-  topProducts: { productId: string | null; name: string; qty: number; amount: number }[];
+export interface Catalog {
+  products: Product[];
+  categories: Category[];
+  optionGroups: OptionGroup[];
+  serverTime: string;
 }
 
 export const api = {
+  // ---- auth
   health: (c: ApiConfig) => request<Health>(c, 'GET', '/health', undefined, 4000),
-  products: (c: ApiConfig) => request<{ products: Product[]; serverTime: string }>(c, 'GET', '/products'),
+  staff: (c: ApiConfig) => request<{ staff: User[] }>(c, 'GET', '/auth/staff'),
+  login: (c: ApiConfig, body: { username: string; pin?: string; password?: string; client?: string }) =>
+    request<{ token: string; expiresAt: string; user: User }>(c, 'POST', '/auth/login', body),
+  logout: (c: ApiConfig) => request<{ ok: boolean }>(c, 'POST', '/auth/logout'),
+  me: (c: ApiConfig) => request<{ user: User }>(c, 'GET', '/auth/me'),
+
+  // ---- catalog
+  catalog: (c: ApiConfig) => request<Catalog>(c, 'GET', '/products'),
+  tables: (c: ApiConfig) => request<{ tables: DiningTable[] }>(c, 'GET', '/tables'),
+
+  // ---- orders
   uploadOrder: (c: ApiConfig, o: LocalOrder) =>
     request<{ id: string; duplicate?: boolean }>(c, 'POST', '/orders', {
       id: o.id,
       number: o.number,
       deviceId: o.deviceId,
+      shiftId: o.shiftId ?? undefined,
       cashier: o.cashier,
       orderType: o.orderType,
       tableName: o.tableName,
       note: o.note,
-      items: o.items.map(({ productId, name, price, qty, note }) => ({ productId, name, price, qty, note })),
+      items: o.items.map(({ productId, name, price, qty, note, options }) => ({ productId, name, price, qty, note, options })),
       discount: o.discount,
       paymentMethod: o.paymentMethod,
       paid: o.paid,
       createdAt: o.createdAt,
     }),
-  voidOrder: (c: ApiConfig, id: string) => request<{ status: string }>(c, 'POST', `/orders/${encodeURIComponent(id)}/void`),
-  summary: (c: ApiConfig, from: string, to: string) =>
-    request<Summary>(c, 'GET', `/reports/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  voidOrder: (c: ApiConfig, id: string, reason: string) =>
+    request<{ status: string }>(c, 'POST', `/orders/${encodeURIComponent(id)}/void`, { reason }),
+  refundOrder: (c: ApiConfig, id: string, body: { reason: string; restock?: boolean; shiftId?: string }) =>
+    request<{ status: string }>(c, 'POST', `/orders/${encodeURIComponent(id)}/refund`, body),
+
+  // ---- shifts
+  currentShift: (c: ApiConfig, deviceId: string) => request<{ shift: Shift | null }>(c, 'GET', `/shifts/current${q({ deviceId })}`),
+  openShift: (c: ApiConfig, deviceId: string, openingCash: number) => request<Shift>(c, 'POST', '/shifts/open', { deviceId, openingCash }),
+  closeShift: (c: ApiConfig, id: string, countedCash: number, note: string) =>
+    request<ShiftReport>(c, 'POST', `/shifts/${encodeURIComponent(id)}/close`, { countedCash, note }),
+  shiftReport: (c: ApiConfig, id: string) => request<ShiftReport>(c, 'GET', `/shifts/${encodeURIComponent(id)}/report`),
+  shifts: (c: ApiConfig, from?: string, to?: string) => request<{ shifts: Shift[] }>(c, 'GET', `/shifts${q({ from, to })}`),
+
+  // ---- reports (store-wide needs owner; cashiers pass shiftId)
+  summary: (c: ApiConfig, p: { from: string; to: string; shiftId?: string; compare?: boolean }) =>
+    request<Summary>(c, 'GET', `/reports/summary${q({ from: p.from, to: p.to, shiftId: p.shiftId, compare: p.compare ? 1 : undefined })}`),
+
+  // ---- inventory
+  inventory: (c: ApiConfig, p: { low?: boolean } = {}) =>
+    request<{ items: InventoryItem[] }>(c, 'GET', `/inventory/items${q({ low: p.low ? 1 : undefined })}`),
+  adjustStock: (c: ApiConfig, itemId: string, body: { delta?: number; qty?: number; reason: string }) =>
+    request<InventoryItem>(c, 'POST', `/inventory/items/${encodeURIComponent(itemId)}/adjust`, body),
+  stockMoves: (c: ApiConfig, p: { itemId?: string; type?: string; from?: string; to?: string; limit?: number } = {}) =>
+    request<{ moves: StockMove[] }>(c, 'GET', `/inventory/moves${q(p)}`),
+  createStocktake: (c: ApiConfig, body: { shiftId?: string; note?: string; lines: { itemId: string; counted: number; reason?: string }[] }) =>
+    request<Stocktake>(c, 'POST', '/inventory/stocktakes', body),
+  stocktakes: (c: ApiConfig) => request<{ stocktakes: Stocktake[] }>(c, 'GET', '/inventory/stocktakes'),
+
+  // ---- purchasing
+  suppliers: (c: ApiConfig) => request<{ suppliers: Supplier[] }>(c, 'GET', '/suppliers'),
+  purchases: (c: ApiConfig, status?: string) => request<{ purchases: Purchase[] }>(c, 'GET', `/purchases${q({ status })}`),
+  purchaseSuggestions: (c: ApiConfig) =>
+    request<{ lines: { itemId: string; name: string; unit: string; currentStock: number; minQty: number; qty: number; unitCost: number; supplierId: string | null }[] }>(
+      c,
+      'GET',
+      '/purchases/suggestions',
+    ),
+  createPurchase: (c: ApiConfig, body: { supplierId?: string; note?: string; lines: { itemId: string; qty: number; unitCost?: number }[] }) =>
+    request<Purchase>(c, 'POST', '/purchases', body),
+  receivePurchase: (c: ApiConfig, id: string, lines?: { itemId: string; receivedQty?: number; unitCost?: number }[]) =>
+    request<Purchase>(c, 'POST', `/purchases/${encodeURIComponent(id)}/receive`, lines ? { lines } : {}),
+
+  // ---- devices
   heartbeat: (c: ApiConfig, d: { id: string; name: string; appVersion: string }) =>
     request<{ ok: boolean }>(c, 'POST', '/devices/heartbeat', { ...d, kind: 'pos' }, 4000),
 };
