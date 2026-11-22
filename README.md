@@ -40,6 +40,7 @@ npm run serve        # builds POS + Boss, then serves everything on port 4000
 
 - On the PC, open the POS at `http://localhost:4000/pos/`.
 - On the phone, use the same Wi-Fi and open `http://<PC IP>:4000/boss/` (e.g. `http://192.168.2.211:4000/boss/`). The server prints the PC's LAN IP when it starts. The browser's *Add to Home screen* turns it into an app icon.
+- **iPhone:** open the address in **Safari**, tap *Share* → *Add to Home Screen*. ShopFlow Boss then gets its own icon and opens full screen like an app, without the App Store. A banner in the app explains this.
 - Every sale, refund, shift close, stock alert and open bill reaches the phone within about a second (SSE). Purchase approvals made on the phone reach the POS.
 - If the phone cannot connect, allow port 4000 in Windows Firewall. In PowerShell **as Administrator**:
   `New-NetFirewallRule -DisplayName "ShopFlow 4000" -Direction Inbound -Protocol TCP -LocalPort 4000 -Action Allow -Profile Private`.

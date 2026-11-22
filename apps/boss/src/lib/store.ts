@@ -199,7 +199,7 @@ export function stopLive() {
 function showSystemNotification(n: { title: string; body: string }) {
   try {
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
-      new Notification(n.title, { body: n.body, icon: './favicon.svg' });
+      new Notification(n.title, { body: n.body, icon: './icons/icon-192.png' });
     }
   } catch {
     /* not supported (e.g. Android WebView without a push plugin) */

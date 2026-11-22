@@ -211,7 +211,7 @@ export function More({ openNotifications }: { openNotifications: () => void }) {
   );
 }
 
-function ShiftSheet({ id, onClose }: { id: string; onClose: () => void }) {
+export function ShiftSheet({ id, onClose }: { id: string; onClose: () => void }) {
   const { data, error, loading } = useRemote((c) => api.shiftReport(c, id), [id]);
   const s = data?.shift;
   const r = data?.summary;

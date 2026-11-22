@@ -6,6 +6,7 @@ import { Activity } from './screens/Activity';
 import { Stock } from './screens/Stock';
 import { More, Notifications } from './screens/More';
 import { onServerEvent, startLive, useBoss } from './lib/store';
+import { InstallHint } from './components/InstallHint';
 
 export type Tab = 'home' | 'reports' | 'activity' | 'stock' | 'more' | 'notifications';
 
@@ -39,10 +40,17 @@ export function App() {
     [],
   );
 
-  if (!session) return <Login />;
+  if (!session)
+    return (
+      <>
+        <InstallHint />
+        <Login />
+      </>
+    );
 
   return (
     <div className="app">
+      <InstallHint />
       <main className="main">
         {tab === 'home' && <Home go={setTab} />}
         {tab === 'reports' && <Reports />}
