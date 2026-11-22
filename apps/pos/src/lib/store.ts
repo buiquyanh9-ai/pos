@@ -311,7 +311,7 @@ async function doSync() {
     // Not logged in: only check that the server answers, so the login screen can show status.
     try {
       await api.health(cfg());
-      set({ connection: 'unauthorized', lastError: null });
+      set({ connection: 'online', lastError: null }); // server reachable; the login screen handles the rest
     } catch (err) {
       set({ connection: 'offline', lastError: err instanceof Error ? err.message : String(err) });
     }

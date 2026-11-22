@@ -4,6 +4,7 @@ import './hardware'; // registers hardware drivers
 import { App } from './App';
 import { startSync } from './lib/store';
 import './styles.css';
+import './screens.css';
 
 startSync();
 

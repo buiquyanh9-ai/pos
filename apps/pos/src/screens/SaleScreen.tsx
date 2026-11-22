@@ -1,10 +1,11 @@
 import { useMemo, useState, type Dispatch } from 'react';
-import { cashSuggestions, qtyOfProduct, toOrderItems, totalsOf, type Cart, type CartAction } from '../lib/cart';
+import { cashSuggestions, optionsLabel, qtyOfProduct, toOrderItems, totalsOf, type Cart, type CartAction } from '../lib/cart';
 import { fold, money } from '../lib/format';
 import { commitSale, getState, usePos } from '../lib/store';
 import { openDrawer, printReceipt } from '../lib/receipt';
 import { notify } from '../lib/notify';
-import { ORDER_TYPE_LABEL, PAYMENT_LABEL, type LocalOrder, type OrderType, type PaymentMethod } from '../lib/types';
+import { ORDER_TYPE_LABEL, PAYMENT_LABEL, type LocalOrder, type OrderType, type PaymentMethod, type Product } from '../lib/types';
+import { NoteDialog, OptionPicker } from '../components/OptionPicker';
 import { Modal, Numpad } from '../components/Modal';
 
 interface Props {
@@ -16,6 +17,15 @@ interface Props {
 
 export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
   const products = usePos((s) => s.products);
+  const tables = usePos((s) => s.tables);
+  const [picking, setPicking] = useState<Product | null>(null);
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const add = (p: Product) => {
+    if (p.optionGroups.length) return setPicking(p);
+    if (p.stock === 0) notify(`${p.name}: kho đã hết nguyên liệu theo sổ sách`, 'error');
+    dispatch({ type: 'add', product: p });
+  };
+  const areas = [...new Set(tables.map((t) => t.area))];
   const [category, setCategory] = useState<string>('');
   const [showCart, setShowCart] = useState(false); // narrow screens: cart as a sheet
   const [paying, setPaying] = useState(false);
@@ -56,7 +66,7 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
             {visible.map((p) => {
               const q = qtyOf(p.id);
               return (
-                <button key={p.id} className={q ? 'product in-cart' : 'product'} onClick={() => dispatch({ type: 'add', product: p })}>
+                <button key={p.id} className={q ? 'product in-cart' : 'product'} onClick={() => add(p)}>
                   {q > 0 && <span className="product-qty">{q}</span>}
                   {p.imageUrl ? <img className="product-image" src={p.imageUrl} alt="" /> : <span className={`product-image product-letter tone-${(p.category || 'x').length % 5}`}>{p.name.slice(0, 1)}</span>}
                   <span className="product-name">{p.name}</span>
@@ -76,14 +86,33 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
           </button>
         </div>
         <div className="order-types">{(Object.keys(ORDER_TYPE_LABEL) as OrderType[]).map((type) => <button key={type} className={cart.orderType === type ? 'order-type active' : 'order-type'} onClick={() => dispatch({ type: 'orderType', orderType: type })}>{ORDER_TYPE_LABEL[type]}</button>)}</div>
-        {cart.orderType === 'dine_in' && <div className="table-picker"><label>Bàn</label><input value={cart.tableName} onChange={(e) => dispatch({ type: 'table', tableName: e.target.value })} placeholder="Nhập số bàn" /><div className="table-chips">{['01','02','03','04','05'].map((table) => <button key={table} className={cart.tableName === table ? 'table-chip active' : 'table-chip'} onClick={() => dispatch({ type: 'table', tableName: table })}>{table}</button>)}</div></div>}
+        {cart.orderType === 'dine_in' && (
+          <div className="table-picker">
+            <label>Chọn bàn{cart.tableName ? `: ${cart.tableName}` : ''}</label>
+            {areas.map((area) => (
+              <div key={area} className="table-area">
+                {areas.length > 1 && <small className="muted">{area}</small>}
+                <div className="table-chips">
+                  {tables
+                    .filter((t) => t.area === area)
+                    .map((t) => (
+                      <button key={t.id} className={cart.tableName === t.name ? 'table-chip active' : 'table-chip'} onClick={() => dispatch({ type: 'table', tableName: cart.tableName === t.name ? '' : t.name })}>
+                        {t.name}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            ))}
+            {!tables.length && <input value={cart.tableName} onChange={(e) => dispatch({ type: 'table', tableName: e.target.value })} placeholder="Nhập số bàn" />}
+          </div>
+        )}
         <ul className="cart-lines">
           {cart.lines.length === 0 && <li className="empty">Chạm vào sản phẩm để thêm</li>}
           {cart.lines.map((l) => (
             <li key={l.key} className="cart-line">
               <div className="cart-line-info">
-                <button className="cart-line-name" onClick={() => dispatch({ type: 'setNote', key: l.key, note: l.note ? '' : 'Ít đá' })}>{l.name}</button>
-                <span className="muted">{money(l.price)}</span>
+                <button className="cart-line-name" onClick={() => setNoteFor(l.key)} title="Chạm để ghi chú">{l.name}</button>
+                <span className="muted">{money(l.price)}{l.options.length ? ` · ${optionsLabel(l.options)}` : ''}</span>
                 {l.note && <small className="line-note">* {l.note}</small>}
               </div>
               <div className="stepper">
@@ -163,6 +192,32 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
         />
       )}
       {done && <DoneDialog order={done} onClose={() => setDone(null)} />}
+      {picking && (
+        <OptionPicker
+          product={picking}
+          onClose={() => setPicking(null)}
+          onAdd={(options, note, qty) => {
+            if (picking.stock === 0) notify(`${picking.name}: kho đã hết nguyên liệu theo sổ sách`, 'error');
+            dispatch({ type: 'add', product: picking, options, note, qty });
+            setPicking(null);
+          }}
+        />
+      )}
+      {noteFor && (() => {
+        const line = cart.lines.find((l) => l.key === noteFor);
+        if (!line) return null;
+        return (
+          <NoteDialog
+            title={line.name}
+            initial={line.note}
+            onClose={() => setNoteFor(null)}
+            onSave={(note) => {
+              dispatch({ type: 'setNote', key: line.key, note });
+              setNoteFor(null);
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -195,7 +250,7 @@ function PaymentDialog({ total, items, onPay, onClose }: { total: number; items:
   const short = effectivePaid < total;
   return (
     <Modal title={`Thanh toán ${money(total)}`} onClose={onClose} wide>
-      <div className="payment-modal"><div className="payment-summary"><span className="eyebrow">TÓM TẮT ĐƠN</span>{items.map((item) => <div className="summary-line" key={item.key}><span>{item.qty} × {item.name}</span><strong>{money(item.qty * item.price)}</strong></div>)}<div className="summary-total"><span>Tổng thanh toán</span><strong>{money(total)}</strong></div></div><div className="payment-controls"><div className="segmented">
+      <div className="payment-modal"><div className="payment-summary"><span className="eyebrow">TÓM TẮT ĐƠN</span>{items.map((item) => <div className="summary-line" key={item.key}><span>{item.qty} × {item.name}{item.options.length ? ` (${optionsLabel(item.options)})` : ''}</span><strong>{money(item.qty * item.price)}</strong></div>)}<div className="summary-total"><span>Tổng thanh toán</span><strong>{money(total)}</strong></div></div><div className="payment-controls"><div className="segmented">
         {(Object.keys(PAYMENT_LABEL) as PaymentMethod[]).map((m) => (
           <button key={m} className={m === method ? 'seg active' : 'seg'} onClick={() => setMethod(m)}>
             {PAYMENT_LABEL[m]}
@@ -236,7 +291,11 @@ function PaymentDialog({ total, items, onPay, onClose }: { total: number; items:
         </div>
       ) : (
         <p className="pay-note">
-          {method === 'card' ? 'Quẹt/chạm thẻ trên máy POS hoặc máy cà thẻ, sau đó xác nhận.' : 'Khách chuyển khoản đúng số tiền, kiểm tra đã nhận rồi xác nhận.'}
+          {method === 'card'
+            ? 'Quẹt/chạm thẻ trên máy POS hoặc máy cà thẻ, sau đó xác nhận.'
+            : method === 'qr'
+              ? `Khách quét mã QR của cửa hàng và thanh toán đúng ${money(total)}. Kiểm tra tiền đã về (app ngân hàng/ví) rồi xác nhận.`
+              : `Khách chuyển khoản đúng ${money(total)}. Kiểm tra đã nhận tiền rồi xác nhận.`}
         </p>
       )}
       <button className="btn primary big full" disabled={short} onClick={() => onPay(method, effectivePaid)}>
