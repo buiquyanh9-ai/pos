@@ -388,6 +388,8 @@ function migrate(db: DB) {
     if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_orders_shift ON orders(shift_id)');
+  // QR payments are bank transfers: merge them so reports show one method.
+  db.exec("UPDATE orders SET payment_method = 'transfer' WHERE payment_method = 'qr'");
   // v1 -> v2: build categories from the legacy text column.
   const orphan = db.prepare("SELECT DISTINCT category FROM products WHERE category_id IS NULL AND category <> ''").all();
   for (const r of orphan) {

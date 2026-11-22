@@ -148,7 +148,7 @@ export function seedDemoSales(db: DB, days = 14, seed = 42) {
         const subtotal = items.reduce((a, l) => a + l.p.price * l.qty, 0);
         const discount = rand() < 0.08 ? Math.round(subtotal * 0.1 / 1000) * 1000 : 0;
         const total = subtotal - discount;
-        const method = pick(['cash', 'cash', 'cash', 'transfer', 'qr', 'card'] as const);
+        const method = pick(['cash', 'cash', 'cash', 'transfer', 'transfer'] as const);
         const paid = method === 'cash' ? Math.ceil(total / 10000) * 10000 : total;
         const id = randomUUID();
         const createdAt = new Date(t).toISOString();

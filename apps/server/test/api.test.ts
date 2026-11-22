@@ -125,8 +125,10 @@ test('a sale deducts recipe stock exactly once, even when uploaded twice or conc
 test('order validation', async () => {
   assert.equal((await call('POST', '/orders', order({ paid: 1000 }), 'cashier')).status, 400);
   assert.equal((await call('POST', '/orders', order({ items: [] }), 'cashier')).status, 400);
-  assert.equal((await call('POST', '/orders', order({ paymentMethod: 'qr', paid: 60000 }), 'cashier')).status, 400);
-  assert.equal((await call('POST', '/orders', order({ paymentMethod: 'qr', paid: 50000 }), 'cashier')).status, 201);
+  assert.equal((await call('POST', '/orders', order({ paymentMethod: 'transfer', paid: 60000 }), 'cashier')).status, 400);
+  const qr = await call('POST', '/orders', order({ paymentMethod: 'qr', paid: 50000 }), 'cashier');
+  assert.equal(qr.status, 201);
+  assert.equal(qr.body.paymentMethod, 'transfer'); // QR is recorded as a bank transfer
   assert.equal((await call('POST', '/orders', order({ orderType: 'boat' }), 'cashier')).status, 400);
   assert.equal((await call('POST', '/orders', order({ discount: 999999 }), 'cashier')).status, 400);
 });

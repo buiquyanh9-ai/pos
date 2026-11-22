@@ -240,7 +240,7 @@ export function ShiftSheet({ id, onClose }: { id: string; onClose: () => void })
           </li>
           {r.byPayment.map((p) => (
             <li key={p.method}>
-              <span>· {p.method === 'cash' ? 'Tiền mặt' : p.method === 'transfer' ? 'Chuyển khoản' : p.method === 'qr' ? 'QR' : 'Thẻ'}</span>
+              <span>· {p.method === 'cash' ? 'Tiền mặt' : p.method === 'transfer' ? 'Chuyển khoản' : 'Thẻ'}</span>
               <span>{money(p.revenue)}</span>
             </li>
           ))}

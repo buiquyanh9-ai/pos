@@ -8,7 +8,7 @@ import { createNotification } from '../notifications.ts';
 import { expectedCash, rowToShift, summarize } from '../reports.ts';
 import { HttpError, MAX_MONEY, bad, int, isoDate, reqInt, reqStr, str } from '../validate.ts';
 
-export const PAYMENT_METHODS = ['cash', 'card', 'transfer', 'qr'] as const;
+export const PAYMENT_METHODS = ['cash', 'card', 'transfer'] as const;
 export const ORDER_TYPES = ['dine_in', 'takeaway', 'delivery'] as const;
 
 const fmt = (n: number) => `${new Intl.NumberFormat('vi-VN').format(n)}đ`;
@@ -101,7 +101,9 @@ export function salesRoutes(db: DB) {
     const subtotal = items.reduce((s, it) => s + it.lineTotal, 0);
     const discount = int(b.discount, 'discount', { optional: true, min: 0, max: subtotal }) ?? 0;
     const total = subtotal - discount;
-    const paymentMethod = reqStr(b.paymentMethod, 'paymentMethod');
+    // A QR payment is a bank transfer; older terminals may still send 'qr'.
+    const rawMethod = reqStr(b.paymentMethod, 'paymentMethod');
+    const paymentMethod = rawMethod === 'qr' ? 'transfer' : rawMethod;
     if (!(PAYMENT_METHODS as readonly string[]).includes(paymentMethod)) throw bad(`paymentMethod must be one of ${PAYMENT_METHODS.join(', ')}`);
     const paid = reqInt(b.paid, 'paid', { min: 0, max: MAX_MONEY });
     if (paid < total) throw bad('paid is less than total');

@@ -428,9 +428,7 @@ function PaymentDialog({ total, items, onPay, onClose }: { total: number; items:
         <p className="pay-note">
           {method === 'card'
             ? 'Quẹt/chạm thẻ trên máy POS hoặc máy cà thẻ, sau đó xác nhận.'
-            : method === 'qr'
-              ? `Khách quét mã QR của cửa hàng và thanh toán đúng ${money(total)}. Kiểm tra tiền đã về (app ngân hàng/ví) rồi xác nhận.`
-              : `Khách chuyển khoản đúng ${money(total)}. Kiểm tra đã nhận tiền rồi xác nhận.`}
+            : `Khách chuyển khoản (hoặc quét mã QR ngân hàng) đúng ${money(total)}. Kiểm tra đã nhận tiền rồi xác nhận.`}
         </p>
       )}
       <button className="btn primary big full" disabled={short} onClick={() => onPay(method, effectivePaid)}>

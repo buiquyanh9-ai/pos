@@ -62,16 +62,15 @@ export interface DiningTable {
   sort: number;
 }
 
-export type PaymentMethod = 'cash' | 'transfer' | 'qr' | 'card';
+export type PaymentMethod = 'cash' | 'transfer' | 'card';
 export type OrderType = 'dine_in' | 'takeaway' | 'delivery';
 
-/** Methods offered at the counter. QR / card stay valid for old orders and reports. */
+/** Methods offered at the counter (a QR payment is a bank transfer). Card stays valid for old orders. */
 export const COUNTER_PAYMENT_METHODS: PaymentMethod[] = ['cash', 'transfer'];
 
 export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   cash: 'Tiền mặt',
   transfer: 'Chuyển khoản',
-  qr: 'QR',
   card: 'Thẻ',
 };
 

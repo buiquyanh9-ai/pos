@@ -254,7 +254,6 @@ body { background: var(--bg); }
 .pay-tile small { grid-area: sub; color: var(--accent); font-size: 0.74rem; font-weight: 600; }
 .pay-dot.pay-cash { background: #16a34a; }
 .pay-dot.pay-transfer { background: #2563eb; }
-.pay-dot.pay-qr { background: #7c3aed; }
 .pay-dot.pay-card { background: #64748b; }
 .report-menu .menu-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--surface-2); flex: none; }
 .install-hint { display: flex; align-items: center; gap: 10px; margin: calc(8px + env(safe-area-inset-top)) 10px 0; padding: 10px 12px; border-radius: 14px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; font-size: 0.85rem; }

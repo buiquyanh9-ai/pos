@@ -93,6 +93,7 @@ let state: PosState = {
     note: o.note ?? '',
     shiftId: o.shiftId ?? null,
     cashierId: o.cashierId ?? null,
+    paymentMethod: (o.paymentMethod as string) === 'qr' ? 'transfer' : o.paymentMethod,
   })),
   connection: 'checking',
   syncing: false,

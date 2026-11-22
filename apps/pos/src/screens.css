@@ -112,6 +112,5 @@
 .pay-tile small { grid-area: sub; color: var(--muted); }
 .pay-dot.pay-cash, .pay-badge.pay-cash { background: #16a34a; }
 .pay-dot.pay-transfer, .pay-badge.pay-transfer { background: #2563eb; }
-.pay-dot.pay-qr, .pay-badge.pay-qr { background: #7c3aed; }
 .pay-dot.pay-card, .pay-badge.pay-card { background: #64748b; }
 .pay-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; color: #fff; font-size: 0.78rem; font-weight: 700; }

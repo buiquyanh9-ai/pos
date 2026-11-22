@@ -68,7 +68,7 @@ export function encodeReceipt(receipt: ReceiptData, paperWidthChars = 32): Uint8
     [ESC, 0x45, 0x01],
     line(right('TONG', receipt.total.toLocaleString('en-US'))),
     [ESC, 0x45, 0x00],
-    line(`Thanh toan: ${{ cash: 'Tien mat', card: 'The', transfer: 'Chuyen khoan', qr: 'QR' }[receipt.paymentMethod]}`),
+    line(`Thanh toan: ${{ cash: 'Tien mat', card: 'The', transfer: 'Chuyen khoan' }[receipt.paymentMethod]}`),
     ...(receipt.paymentMethod === 'cash' ? [line(right('Khach dua', receipt.paid.toLocaleString('en-US')))] : []),
     ...(receipt.change ? [line(right('Tien thoi', receipt.change.toLocaleString('en-US')))] : []),
     line(),
