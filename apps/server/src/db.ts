@@ -272,6 +272,17 @@ CREATE TABLE IF NOT EXISTS open_orders (
   updated_at  TEXT NOT NULL
 );
 
+-- Cash put into / taken out of the drawer during a shift (pay-ins, supplier payments, owner withdrawals).
+CREATE TABLE IF NOT EXISTS cash_moves (
+  id       TEXT PRIMARY KEY,
+  shift_id TEXT NOT NULL REFERENCES shifts(id),
+  type     TEXT NOT NULL CHECK (type IN ('in','out')),
+  amount   INTEGER NOT NULL CHECK (amount > 0),
+  reason   TEXT NOT NULL,
+  user_id  TEXT,
+  at       TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS devices (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,

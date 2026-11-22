@@ -207,5 +207,8 @@ export function expectedCash(db: DB, shiftId: string) {
   const refunds = db
     .prepare("SELECT COALESCE(SUM(refund_amount),0) AS v FROM orders WHERE status = 'refunded' AND payment_method = 'cash' AND refund_shift_id = ?")
     .get(shiftId);
-  return Number(s.opening_cash) + Number(sales.v) - Number(refunds?.v ?? 0);
+  const moves = db
+    .prepare("SELECT COALESCE(SUM(CASE type WHEN 'in' THEN amount ELSE -amount END),0) AS v FROM cash_moves WHERE shift_id = ?")
+    .get(shiftId);
+  return Number(s.opening_cash) + Number(sales.v) - Number(refunds?.v ?? 0) + Number(moves?.v ?? 0);
 }

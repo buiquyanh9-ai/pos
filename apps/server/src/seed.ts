@@ -65,6 +65,7 @@ export function seedIfEmpty(db: DB) {
   tx(db, () => {
     for (const a of DEMO_ACCOUNTS) createUser(db, { ...a, id: `u-${a.username}` });
     setSetting(db, 'store_name', 'Cửa hàng mẫu ShopFlow');
+    setSetting(db, 'receipt_footer', 'Cảm ơn quý khách, hẹn gặp lại!');
     setSetting(db, 'sample_data', '1');
 
     CATEGORIES.forEach(([id, name, color], i) =>

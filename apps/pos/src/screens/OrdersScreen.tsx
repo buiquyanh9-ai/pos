@@ -56,63 +56,137 @@ export function OrdersScreen({ onEdit }: { onEdit?: (order: LocalOrder) => void 
       .catch(() => setSummary(null));
   }, [connection, orders, shift]);
 
+  const sel = selected ? orders.find((o) => o.id === selected.id) ?? selected : null;
+  const tableOf = (o: LocalOrder) => (o.tableName ? `Bàn ${o.tableName}` : ORDER_TYPE_LABEL[o.orderType]);
+  const itemsText = (o: LocalOrder) => o.items.map((i) => `${i.qty}× ${i.name}`).join(', ');
+
   return (
-    <div className="orders">
-      <div className="page-title"><div><span className="eyebrow">QUẢN LÝ</span><h1>Đơn hàng</h1></div><span className="soft-count">{visibleOrders.length} đơn</span></div>
-      <div className="stats">
-        <div className="stat">
-          <span className="muted">Đơn hôm nay</span>
-          <strong>{today.length}</strong>
-        </div>
-        <div className="stat">
-          <span className="muted">Doanh thu hôm nay (đã trừ huỷ)</span>
-          <strong>{money(localRevenue)}</strong>
-        </div>
-        <div className="stat">
-          <span className="muted">Doanh thu thuần ca này (máy chủ)</span>
-          <strong>{summary ? money(summary.netRevenue) : '—'}</strong>
-        </div>
-      </div>
-      <div className="pay-tiles">
-        {byMethod.map((b) => (
-          <button key={b.method} className={pay === b.method ? 'pay-tile active' : 'pay-tile'} onClick={() => setPay(pay === b.method ? 'all' : b.method)} title="Bấm để lọc các đơn theo phương thức này">
-            <span className={`pay-dot pay-${b.method}`} aria-hidden="true" />
-            <span className="pay-tile-label">{PAYMENT_LABEL[b.method]}</span>
-            <strong>{money(b.total)}</strong>
-            <small>{b.count} đơn · {scope === 'today' ? 'hôm nay' : '30 ngày'} · bấm để lọc</small>
-          </button>
-        ))}
-      </div>
-      <div className="orders-toolbar"><div className="filter-segment"><button className={scope === 'today' ? 'active' : ''} onClick={() => setScope('today')}>Hôm nay</button><button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>Tất cả</button></div><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">Mọi trạng thái</option><option value="synced">Đã đồng bộ</option><option value="pending">Chờ gửi</option><option value="voided">Đã huỷ</option><option value="refunded">Đã hoàn tiền</option></select><select value={pay} onChange={(e) => setPay(e.target.value as 'all' | PaymentMethod)}><option value="all">Mọi phương thức</option>{methods.map((m) => <option key={m} value={m}>{PAYMENT_LABEL[m]}</option>)}</select><select value={type} onChange={(e) => setType(e.target.value as 'all' | OrderType)}><option value="all">Mọi loại đơn</option>{(Object.keys(ORDER_TYPE_LABEL) as OrderType[]).map((key) => <option key={key} value={key}>{ORDER_TYPE_LABEL[key]}</option>)}</select></div>
-
-      {visibleOrders.length === 0 ? (
-        <div className="empty">Chưa có đơn hàng nào.</div>
-      ) : (
-        <ul className="order-list">
-          {visibleOrders.map((o) => (
-            <li key={o.id}>
-              <button className="order-row" onClick={() => setSelected(o)}>
-                <span className="order-num">{o.number}</span>
-                <span className="muted">
-                  {time(o.createdAt)} · <span className={`pay-badge pay-${o.paymentMethod}`}>{PAYMENT_LABEL[o.paymentMethod]}</span>
-                  {o.tableName && ` · Bàn ${o.tableName}`}
-                </span>
-                <span className={`pill pill-${o.status !== 'completed' ? 'voided' : o.sync}`}>{o.status !== 'completed' ? ORDER_STATUS_LABEL[o.status] : SYNC_LABEL[o.sync]}</span>
-                <strong className="order-total">{money(o.total)}</strong>
-              </button>
-            </li>
+    <div className="orders-wide">
+      <section className="orders-main">
+        <div className="orders-kpis">
+          <div className="okpi">
+            <span>Đơn hôm nay</span>
+            <strong>{today.length}</strong>
+          </div>
+          <div className="okpi">
+            <span>Doanh thu hôm nay</span>
+            <strong>{money(localRevenue)}</strong>
+          </div>
+          <div className="okpi">
+            <span>Ca này (máy chủ)</span>
+            <strong>{summary ? money(summary.netRevenue) : '—'}</strong>
+          </div>
+          {byMethod.map((b) => (
+            <button key={b.method} className={pay === b.method ? 'okpi pay active' : 'okpi pay'} onClick={() => setPay(pay === b.method ? 'all' : b.method)} title="Bấm để lọc">
+              <span>
+                <i className={`pay-dot pay-${b.method}`} /> {PAYMENT_LABEL[b.method]} · {b.count} đơn
+              </span>
+              <strong>{money(b.total)}</strong>
+            </button>
           ))}
-        </ul>
-      )}
-
-      {selected && (
-        <OrderDetail
-          order={orders.find((o) => o.id === selected.id) ?? selected}
-          onClose={() => setSelected(null)}
-          onChanged={() => setReloadTick((n) => n + 1)}
-          onEdit={onEdit}
-        />
-      )}
+        </div>
+        <div className="orders-toolbar">
+          <div className="filter-segment">
+            <button className={scope === 'today' ? 'active' : ''} onClick={() => setScope('today')}>
+              Hôm nay
+            </button>
+            <button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>
+              30 ngày
+            </button>
+          </div>
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="all">Mọi trạng thái</option>
+            <option value="synced">Đã đồng bộ</option>
+            <option value="pending">Chờ gửi</option>
+            <option value="voided">Đã huỷ</option>
+            <option value="refunded">Đã hoàn tiền</option>
+          </select>
+          <select value={pay} onChange={(e) => setPay(e.target.value as 'all' | PaymentMethod)}>
+            <option value="all">Mọi phương thức</option>
+            {methods.map((m) => (
+              <option key={m} value={m}>
+                {PAYMENT_LABEL[m]}
+              </option>
+            ))}
+          </select>
+          <select value={type} onChange={(e) => setType(e.target.value as 'all' | OrderType)}>
+            <option value="all">Mọi loại đơn</option>
+            {(Object.keys(ORDER_TYPE_LABEL) as OrderType[]).map((key) => (
+              <option key={key} value={key}>
+                {ORDER_TYPE_LABEL[key]}
+              </option>
+            ))}
+          </select>
+          <span className="orders-count">
+            {visibleOrders.length} đơn · {money(visibleOrders.filter((o) => o.status === 'completed').reduce((s2, o) => s2 + o.total, 0))}
+          </span>
+        </div>
+        <div className="orders-table-wrap">
+          <table className="orders-table">
+            <thead>
+              <tr>
+                <th>Giờ</th>
+                <th>Số đơn</th>
+                <th>Bàn / loại</th>
+                <th>Món</th>
+                <th>Thu ngân</th>
+                <th>Thanh toán</th>
+                <th>Trạng thái</th>
+                <th className="num">Tổng</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleOrders.map((o) => (
+                <tr key={o.id} className={`${sel?.id === o.id ? 'selected' : ''} ${o.status !== 'completed' ? 'dim' : ''}`} onClick={() => setSelected(o)}>
+                  <td className="muted">{time(o.createdAt)}</td>
+                  <td>
+                    <strong>{o.number}</strong>
+                  </td>
+                  <td>{tableOf(o)}</td>
+                  <td className="items-cell" title={itemsText(o)}>
+                    <span className="clamp2">{itemsText(o)}</span>
+                  </td>
+                  <td className="muted">{o.cashier}</td>
+                  <td>
+                    <span className={`pay-badge pay-${o.paymentMethod}`}>{PAYMENT_LABEL[o.paymentMethod]}</span>
+                  </td>
+                  <td>
+                    <span className={`pill pill-${o.status !== 'completed' ? 'voided' : o.sync}`}>{o.status !== 'completed' ? ORDER_STATUS_LABEL[o.status] : SYNC_LABEL[o.sync]}</span>
+                  </td>
+                  <td className="num">
+                    <strong>{money(o.total)}</strong>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {visibleOrders.length === 0 && <div className="empty">Không có đơn hàng nào phù hợp bộ lọc.</div>}
+        </div>
+      </section>
+      <aside className="orders-side">
+        {sel ? (
+          <OrderDetail inline order={sel} onClose={() => setSelected(null)} onChanged={() => setReloadTick((n) => n + 1)} onEdit={onEdit} />
+        ) : (
+          <div className="orders-side-empty">
+            <h3>Chọn một đơn để xem chi tiết</h3>
+            <p className="muted">Từ đây có thể in lại, sửa đơn, huỷ đơn hoặc hoàn tiền.</p>
+            {summary && (
+              <>
+                <h3>Món bán chạy trong ca</h3>
+                <ol className="report-list">
+                  {summary.topProducts.slice(0, 8).map((p2, i) => (
+                    <li key={p2.productId ?? p2.name}>
+                      <span className="rank">{i + 1}</span>
+                      <span className="grow">{p2.name}</span>
+                      <strong>{p2.qty}</strong>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+          </div>
+        )}
+      </aside>
     </div>
   );
 }
@@ -121,7 +195,7 @@ const VOID_REASONS = ['Nhập nhầm món', 'Khách huỷ trước khi làm', 'T
 const EDIT_REASONS = ['Thêm món', 'Bớt món', 'Sai món', 'Sai bàn', 'Sai phương thức thanh toán'];
 const REFUND_REASONS = ['Món lỗi / không đạt', 'Khách đổi ý', 'Làm sai món', 'Giao hàng thất bại'];
 
-function OrderDetail({ order: o, onClose, onChanged, onEdit }: { order: LocalOrder; onClose: () => void; onChanged: () => void; onEdit?: (o: LocalOrder) => void }) {
+function OrderDetail({ order: o, onClose, onChanged, onEdit, inline }: { order: LocalOrder; onClose: () => void; onChanged: () => void; onEdit?: (o: LocalOrder) => void; inline?: boolean }) {
   const [action, setAction] = useState<'void' | 'refund' | 'edit' | null>(null);
   const [reason, setReason] = useState('');
   const [restock, setRestock] = useState(false);
@@ -148,8 +222,8 @@ function OrderDetail({ order: o, onClose, onChanged, onEdit }: { order: LocalOrd
       setBusy(false);
     }
   };
-  return (
-    <Modal title={`Đơn ${o.number}`} onClose={onClose}>
+  const body = (
+    <>
       <p className="muted">
         {dateTime(o.createdAt)} · {PAYMENT_LABEL[o.paymentMethod]} · {ORDER_TYPE_LABEL[o.orderType]} {o.tableName && `· Bàn ${o.tableName}`}
         {o.cashier && ` · ${o.cashier}`}
@@ -254,6 +328,23 @@ function OrderDetail({ order: o, onClose, onChanged, onEdit }: { order: LocalOrd
         )}
         {o.status === 'completed' && o.sync === 'pending' && <span className="muted small">Đơn chưa gửi lên máy chủ: chưa thể huỷ / hoàn tiền</span>}
       </div>
-    </Modal>
+    </>
+  );
+  if (!inline)
+    return (
+      <Modal title={`Đơn ${o.number}`} onClose={onClose}>
+        {body}
+      </Modal>
+    );
+  return (
+    <div className="order-pane">
+      <div className="order-pane-head">
+        <h2>Đơn {o.number}</h2>
+        <button className="icon-btn" aria-label="Đóng" onClick={onClose}>
+          ✕
+        </button>
+      </div>
+      {body}
+    </div>
   );
 }

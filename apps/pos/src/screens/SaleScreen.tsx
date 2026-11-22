@@ -8,6 +8,7 @@ import { COUNTER_PAYMENT_METHODS, PAYMENT_LABEL, type LocalOrder, type PaymentMe
 import { NoteDialog, OptionPicker } from '../components/OptionPicker';
 import { Modal, Numpad } from '../components/Modal';
 import { TablePicker } from '../components/TablePicker';
+import { VietQr } from '../components/VietQr';
 
 interface Props {
   cart: Cart;
@@ -435,6 +436,9 @@ function PaymentDialog({ total, items, onPay, onClose }: { total: number; items:
             ? 'Quẹt/chạm thẻ trên máy POS hoặc máy cà thẻ, sau đó xác nhận.'
             : `Khách chuyển khoản (hoặc quét mã QR ngân hàng) đúng ${money(total)}. Kiểm tra đã nhận tiền rồi xác nhận.`}
         </p>
+      )}
+      {method === 'transfer' && (
+        <VietQr amount={total} message={`Thanh toan ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h')}`} />
       )}
       <button className="btn primary big full" disabled={short} onClick={() => onPay(method, effectivePaid)}>
         Hoàn tất

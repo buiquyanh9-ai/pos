@@ -61,6 +61,17 @@ function StockTable({ items, canAdjust, onChanged }: { items: InventoryItem[]; c
   const [adjusting, setAdjusting] = useState<InventoryItem | null>(null);
   const [wasting, setWasting] = useState<InventoryItem | null>(null);
   const rows = items.filter((i) => (i.tracking ?? 'exact') === tracking);
+  // Today's movements per item (sold, received, wasted / issued to the kitchen).
+  const [usage, setUsage] = useState<Record<string, Partial<Record<string, number>>>>({});
+  useEffect(() => {
+    const d = new Date();
+    const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
+    remote(api.usage, from, new Date(Date.now() + 60_000).toISOString())
+      .then((r) => setUsage(r.usage))
+      .catch(() => undefined);
+  }, [items]);
+  const u = (id: string, t: string) => usage[id]?.[t] ?? 0;
+  const totalValue = rows.reduce((s, i) => s + Math.max(0, i.qty) * i.unitCost, 0);
   return (
     <>
       <div className="segmented">
@@ -83,6 +94,12 @@ function StockTable({ items, canAdjust, onChanged }: { items: InventoryItem[]; c
             <th>Đơn vị</th>
             <th className="num">Tối thiểu</th>
             <th className="num">Số lượng</th>
+            <th>Mức tồn</th>
+            <th className="num">Bán hôm nay</th>
+            <th className="num">Nhập hôm nay</th>
+            <th className="num">{tracking === 'estimate' ? 'Xuất bếp / hao hụt' : 'Hao hụt'}</th>
+            <th className="num">Giá vốn</th>
+            <th className="num">Giá trị tồn</th>
             <th />
           </tr>
         </thead>
@@ -96,6 +113,16 @@ function StockTable({ items, canAdjust, onChanged }: { items: InventoryItem[]; c
                 <strong>{i.tracking === 'estimate' ? stockText(i) : qty(i.qty)}</strong>
                 {i.low && <span className="pill pill-rejected">Sắp hết</span>}
               </td>
+              <td>
+                <span className="level" title={`${qty(i.qty)} / tối thiểu ${qty(i.minQty)}`}>
+                  <span className={`level-fill ${i.low ? 'low' : ''}`} style={{ width: `${Math.min(100, (Math.max(0, i.qty) / Math.max(1e-9, i.minQty * 3)) * 100)}%` }} />
+                </span>
+              </td>
+              <td className="num">{u(i.id, 'sale') ? qty(-u(i.id, 'sale')) : '—'}</td>
+              <td className="num pos">{u(i.id, 'import') ? `+${qty(u(i.id, 'import'))}` : '—'}</td>
+              <td className="num neg">{u(i.id, 'waste') + u(i.id, 'issue') ? qty(-(u(i.id, 'waste') + u(i.id, 'issue'))) : '—'}</td>
+              <td className="num muted">{i.unitCost ? money(i.unitCost) : '—'}</td>
+              <td className="num">{i.unitCost ? money(Math.round(Math.max(0, i.qty) * i.unitCost)) : '—'}</td>
               <td className="num row-actions">
                 <button className="chip" onClick={() => setWasting(i)}>
                   Ghi hao hụt
@@ -111,6 +138,14 @@ function StockTable({ items, canAdjust, onChanged }: { items: InventoryItem[]; c
         </tbody>
       </table>
       {!rows.length && <p className="empty">Không có mặt hàng</p>}
+      <div className="stock-foot">
+        <span>
+          {rows.length} mặt hàng · {rows.filter((i) => i.low).length} sắp hết
+        </span>
+        <span>
+          Giá trị tồn (theo giá vốn): <strong>{totalValue ? money(Math.round(totalValue)) : 'chưa có giá vốn'}</strong>
+        </span>
+      </div>
       {adjusting && <AdjustDialog item={adjusting} onClose={() => setAdjusting(null)} onDone={() => (setAdjusting(null), onChanged())} />}
       {wasting && <WasteDialog item={wasting} onClose={() => setWasting(null)} onDone={() => (setWasting(null), onChanged())} />}
     </>

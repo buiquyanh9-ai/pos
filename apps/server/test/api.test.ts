@@ -393,3 +393,20 @@ test('orders can be filtered by payment method', async () => {
   const tr = (await call('GET', '/orders?paymentMethod=transfer&limit=1000')).body.orders;
   assert.ok(tr.every((o: { paymentMethod: string }) => o.paymentMethod === 'transfer'));
 });
+
+test('cash in/out changes expected cash; store settings shared; usage per item', async () => {
+  const s = (await call('POST', '/shifts/open', { deviceId: 'pos-cash', openingCash: 200000 }, 'cashier')).body;
+  assert.equal((await call('POST', `/shifts/${s.id}/cash`, { type: 'out', amount: 50000 }, 'cashier')).status, 400);
+  await call('POST', `/shifts/${s.id}/cash`, { type: 'out', amount: 50000, reason: 'Trả tiền đá' }, 'cashier');
+  await call('POST', `/shifts/${s.id}/cash`, { type: 'in', amount: 100000, reason: 'Nộp tiền lẻ' }, 'cashier');
+  assert.equal((await call('GET', `/shifts/${s.id}/cash`)).body.moves.length, 2);
+  const closed = (await call('POST', `/shifts/${s.id}/close`, { countedCash: 250000 }, 'cashier')).body;
+  assert.equal(closed.shift.expectedCash, 250000);
+  assert.equal(closed.shift.cashDifference, 0);
+  assert.equal((await call('PUT', '/store', { bank_bin: '970436', bank_account: '0123456789', bank_holder: 'NGUYEN VAN A' }, 'cashier')).status, 403);
+  assert.equal((await call('PUT', '/store', { bank_bin: '12' })).status, 400);
+  await call('PUT', '/store', { bank_bin: '970436', bank_account: '0123456789', bank_holder: 'NGUYEN VAN A', bank_name: 'Vietcombank' });
+  assert.equal((await call('GET', '/store', undefined, 'cashier')).body.bank_account, '0123456789');
+  const u = (await call('GET', `/inventory/usage?from=2020-01-01T00:00:00Z&to=2030-01-01T00:00:00Z`)).body.usage;
+  assert.ok(u['i-sua-dac'].sale < 0);
+});

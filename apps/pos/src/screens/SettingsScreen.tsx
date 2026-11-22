@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { StoreSettings } from '../components/StoreSettings';
 import { Capacitor } from '@capacitor/core';
 import { api } from '../lib/api';
 import { normalizeBackendUrl, type PosSettings } from '../lib/settings';
@@ -61,7 +62,7 @@ export function SettingsScreen() {
   const lastError = usePos((s) => s.lastError);
   const [form, setForm] = useState<PosSettings>(saved);
   const [testResult, setTestResult] = useState<string | null>(null);
-  const [section, setSection] = useState<'server' | 'store' | 'hardware' | 'about'>('server');
+  const [section, setSection] = useState<'server' | 'store' | 'shop' | 'hardware' | 'about'>('server');
   const printers = useDriverOptions(listPrinters());
   const scanners = useDriverOptions(listScanners());
   const drawers = useDriverOptions(listDrawers());
@@ -106,7 +107,8 @@ export function SettingsScreen() {
   const dirty = JSON.stringify(form) !== JSON.stringify(saved);
 
   return (
-    <div className="settings-layout"><aside className="settings-menu"><div><span className="eyebrow">HỆ THỐNG</span><h1>Cài đặt</h1></div>{[['server','Máy chủ','Kết nối & đồng bộ'],['store','Cửa hàng','Thông tin cửa hàng'],['hardware','Phần cứng','Thiết bị ngoại vi'],['about','Thông tin','Phiên bản & hỗ trợ']].map(([id,label,desc]) => <button key={id} className={section === id ? 'settings-menu-item active' : 'settings-menu-item'} onClick={() => setSection(id as typeof section)}><strong>{label}</strong><small>{desc}</small></button>)}</aside><div className="settings">
+    <div className="settings-layout"><aside className="settings-menu"><div><span className="eyebrow">HỆ THỐNG</span><h1>Cài đặt</h1></div>{[['server','Máy chủ','Kết nối & đồng bộ'],['store','Máy này','Tên quầy, thu ngân'],['shop','Cửa hàng & chuyển khoản','Hoá đơn, tài khoản ngân hàng, mã QR'],['hardware','Phần cứng','Thiết bị ngoại vi'],['about','Thông tin','Phiên bản & hỗ trợ']].map(([id,label,desc]) => <button key={id} className={section === id ? 'settings-menu-item active' : 'settings-menu-item'} onClick={() => setSection(id as typeof section)}><strong>{label}</strong><small>{desc}</small></button>)}</aside><div className="settings">
+      {section === 'shop' && <StoreSettings />}
       {section === 'server' && <section className="card">
         <h2>Máy chủ</h2>
         <label>

@@ -80,6 +80,27 @@ const q = (params: Record<string, string | number | undefined | null>) => {
   return s ? `?${s}` : '';
 };
 
+export interface StoreInfo {
+  store_name: string;
+  store_address: string;
+  store_phone: string;
+  receipt_footer: string;
+  bank_bin: string;
+  bank_name: string;
+  bank_account: string;
+  bank_holder: string;
+}
+
+export interface CashMove {
+  id: string;
+  shiftId: string;
+  type: 'in' | 'out';
+  amount: number;
+  reason: string;
+  userName: string | null;
+  at: string;
+}
+
 export interface ProductInput {
   name?: string;
   price?: number;
@@ -231,6 +252,19 @@ export const api = {
 
   saveSupplier: (c: ApiConfig, id: string | null, body: { name?: string; phone?: string; note?: string; active?: boolean }) =>
     id ? request<Supplier>(c, 'PUT', `/suppliers/${encodeURIComponent(id)}`, body) : request<Supplier>(c, 'POST', '/suppliers', body),
+
+  // ---- store-wide settings (receipt header, bank account for transfers)
+  store: (c: ApiConfig) => request<StoreInfo>(c, 'GET', '/store'),
+  saveStore: (c: ApiConfig, body: Partial<StoreInfo>) => request<StoreInfo>(c, 'PUT', '/store', body),
+
+  // ---- cash in / out during a shift
+  cashMoves: (c: ApiConfig, shiftId: string) => request<{ moves: CashMove[] }>(c, 'GET', `/shifts/${encodeURIComponent(shiftId)}/cash`),
+  addCash: (c: ApiConfig, shiftId: string, body: { type: 'in' | 'out'; amount: number; reason: string }) =>
+    request<CashMove>(c, 'POST', `/shifts/${encodeURIComponent(shiftId)}/cash`, body),
+
+  // ---- stock movement totals per item and type over a period
+  usage: (c: ApiConfig, from: string, to: string) =>
+    request<{ usage: Record<string, Partial<Record<string, number>>> }>(c, 'GET', `/inventory/usage${q({ from, to })}`),
 
   // ---- devices
   heartbeat: (c: ApiConfig, d: { id: string; name: string; appVersion: string }) =>
