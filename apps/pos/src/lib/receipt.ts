@@ -16,7 +16,7 @@ export function buildReceipt(o: LocalOrder, s: PosSettings): ReceiptData {
     orderTypeLabel: ORDER_TYPE_LABEL[o.orderType],
     tableName: o.tableName || undefined,
     note: o.note || undefined,
-    lines: o.items.map((i) => ({ name: i.name, qty: i.qty, price: i.price, lineTotal: i.lineTotal, ...(i.note ? { note: i.note } : {}) })),
+    lines: o.items.map((i) => ({ name: i.options ? `${i.name} (${i.options})` : i.name, qty: i.qty, price: i.price, lineTotal: i.lineTotal, ...(i.note ? { note: i.note } : {}) })),
     subtotal: o.subtotal,
     discount: o.discount,
     total: o.total,

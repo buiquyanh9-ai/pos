@@ -5,6 +5,7 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import { ShiftScreen } from './screens/ShiftScreen';
 import { StockScreen } from './screens/StockScreen';
+import { AdminScreen } from './screens/AdminScreen';
 import { Toasts } from './components/Toasts';
 import { cartReducer, emptyCart } from './lib/cart';
 import { CONNECTION_LABEL, getState, logout, pendingCount, syncNow, usePos } from './lib/store';
@@ -12,14 +13,15 @@ import { getScanner } from './hardware';
 import { notify } from './lib/notify';
 import { ROLE_LABEL, type Role } from './lib/types';
 
-type Tab = 'sale' | 'orders' | 'shift' | 'stock' | 'settings';
-type IconName = 'cart' | 'orders' | 'shift' | 'stock' | 'settings' | 'search';
+type Tab = 'sale' | 'orders' | 'shift' | 'stock' | 'admin' | 'settings';
+type IconName = 'cart' | 'orders' | 'shift' | 'stock' | 'admin' | 'settings' | 'search';
 
 const ICONS: Record<IconName, string> = {
   cart: 'M3 4h2l2 11h10l2-8H6M9 20a1 1 0 1 0 0 0M17 20a1 1 0 1 0 0 0',
   orders: 'M5 4h14v16H5zM8 8h8M8 12h8M8 16h5',
   shift: 'M12 7v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z',
   stock: 'M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8',
+  admin: 'M4 6h16M4 12h16M4 18h10M18 16l2 2 3-4',
   settings: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0-5v2m0 14v2M4.2 4.2l1.4 1.4m12.8 12.8 1.4 1.4M3 12h2m14 0h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4',
   search: 'm21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
 };
@@ -37,6 +39,7 @@ const NAV: { id: Tab; label: string; icon: IconName; roles: Role[] }[] = [
   { id: 'orders', label: 'Đơn hàng', icon: 'orders', roles: ['owner', 'cashier'] },
   { id: 'shift', label: 'Ca', icon: 'shift', roles: ['owner', 'cashier'] },
   { id: 'stock', label: 'Kho', icon: 'stock', roles: ['owner', 'cashier', 'stock'] },
+  { id: 'admin', label: 'Quản lý', icon: 'admin', roles: ['owner'] },
   { id: 'settings', label: 'Cài đặt', icon: 'settings', roles: ['owner', 'cashier', 'stock'] },
 ];
 
@@ -164,6 +167,7 @@ export function App() {
               {tab === 'orders' && <OrdersScreen />}
               {tab === 'shift' && <ShiftScreen />}
               {tab === 'stock' && <StockScreen />}
+              {tab === 'admin' && <AdminScreen />}
               {tab === 'settings' && <SettingsScreen />}
             </>
           )}

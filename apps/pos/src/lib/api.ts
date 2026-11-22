@@ -78,6 +78,19 @@ const q = (params: Record<string, string | number | undefined | null>) => {
   return s ? `?${s}` : '';
 };
 
+export interface ProductInput {
+  name?: string;
+  price?: number;
+  cost?: number | null;
+  categoryId?: string;
+  sku?: string;
+  barcode?: string;
+  imageUrl?: string | null;
+  active?: boolean;
+  optionGroupIds?: string[];
+  recipe?: { itemId: string; qty: number }[];
+}
+
 export interface Health {
   ok: boolean;
   apiVersion: string;
@@ -163,6 +176,26 @@ export const api = {
     request<Purchase>(c, 'POST', '/purchases', body),
   receivePurchase: (c: ApiConfig, id: string, lines?: { itemId: string; receivedQty?: number; unitCost?: number }[]) =>
     request<Purchase>(c, 'POST', `/purchases/${encodeURIComponent(id)}/receive`, lines ? { lines } : {}),
+
+  // ---- owner: menu, tables, staff, inventory items
+  saveProduct: (c: ApiConfig, id: string | null, body: ProductInput) =>
+    id ? request<Product>(c, 'PUT', `/products/${encodeURIComponent(id)}`, body) : request<Product>(c, 'POST', '/products', body),
+  deleteProduct: (c: ApiConfig, id: string) => request<null>(c, 'DELETE', `/products/${encodeURIComponent(id)}`),
+  productsAll: (c: ApiConfig) => request<Catalog & { products: (Product & { recipe: { itemId: string; itemName: string; unit: string; qty: number }[] })[] }>(c, 'GET', '/products?includeInactive=1'),
+  saveCategory: (c: ApiConfig, id: string | null, body: { name?: string; sort?: number; active?: boolean }) =>
+    request<{ ok?: boolean; id?: string }>(c, id ? 'PUT' : 'POST', id ? `/categories/${encodeURIComponent(id)}` : '/categories', body),
+  saveOptionGroup: (c: ApiConfig, id: string | null, body: { name?: string; multi?: boolean; required?: boolean; options?: { id?: string; name: string; priceDelta: number }[] }) =>
+    id ? request<OptionGroup>(c, 'PUT', `/option-groups/${encodeURIComponent(id)}`, body) : request<OptionGroup>(c, 'POST', '/option-groups', body),
+  saveTable: (c: ApiConfig, id: string | null, body: { name?: string; area?: string; sort?: number; active?: boolean }) =>
+    id ? request<DiningTable>(c, 'PUT', `/tables/${encodeURIComponent(id)}`, body) : request<DiningTable>(c, 'POST', '/tables', body),
+  users: (c: ApiConfig) => request<{ users: (User & { active: boolean; hasPin: boolean; hasPassword: boolean })[] }>(c, 'GET', '/users'),
+  saveUser: (c: ApiConfig, id: string | null, body: { username?: string; name?: string; role?: string; pin?: string; password?: string; active?: boolean }) =>
+    id ? request<User>(c, 'PUT', `/users/${encodeURIComponent(id)}`, body) : request<User>(c, 'POST', '/users', body),
+  saveInventoryItem: (
+    c: ApiConfig,
+    id: string | null,
+    body: { name?: string; unit?: string; kind?: 'ingredient' | 'goods'; minQty?: number; unitCost?: number; qty?: number; supplierId?: string | null; active?: boolean },
+  ) => (id ? request<InventoryItem>(c, 'PUT', `/inventory/items/${encodeURIComponent(id)}`, body) : request<InventoryItem>(c, 'POST', '/inventory/items', body)),
 
   // ---- devices
   heartbeat: (c: ApiConfig, d: { id: string; name: string; appVersion: string }) =>
