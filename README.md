@@ -87,6 +87,12 @@ For a real shop:
 6. **Purchasing.** The stock clerk creates a purchase request from the "below minimum" suggestions, and the owner approves or rejects it in Boss.
 7. **Receiving.** The stock clerk enters the quantities actually received. Stock and unit costs update, and both apps see the new levels.
 
+**Also in the POS:**
+- **Open bills.** Save a table's order unpaid, edit it from any terminal, move it to another table, then pay or cancel it (a reason is required). Busy tables are highlighted. The owner sees these bills in Boss under *Hoạt động → Hoá đơn hiện tại*.
+- **Options.** Size, ice, sugar and toppings, each with a surcharge. A size can scale the recipe (L = 1.4×) and a topping can use its own stock, so stock levels and cost of goods stay correct.
+- **Owner back-office (*Quản lý*).** Menu and prices, categories, options, recipes (BOM) with live cost, ingredients/goods, suppliers, tables, staff (roles, PIN, password, lock).
+- **Void / refund.** Both need a reason. A refund can put the goods back in stock. Everything is in the audit log, which the owner can read in Boss under *Thêm → Lịch sử thao tác*.
+
 Revenue rules (net, refunds, voids, profit) are in [docs/SYNC.md](docs/SYNC.md).
 
 **Roles:**
