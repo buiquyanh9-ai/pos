@@ -50,3 +50,43 @@ Nguồn yêu cầu: `c:\VISUAL\pos\CLAUDE.md`. Tham khảo giao diện: `c:\VISU
 - Không tự nhận một tính năng là xong nếu chưa kiểm thử.
 - Commit không ghi dòng co-author. Claude commit và push theo mốc.
 - Dữ liệu mẫu ghi rõ là dữ liệu mẫu (tên cửa hàng "Cửa hàng mẫu", tài khoản demo). Mật khẩu demo ghi trong README.
+
+## Status
+
+### Done and tested
+
+Server: `npm test` runs 24 API and business-flow tests, including the end-to-end flow of CLAUDE.md §4. Covered:
+- Auth, roles and login lockout.
+- Menu with options and BOM; options scale the recipe.
+- Sale idempotency under concurrent upload.
+- Void and refund.
+- Low-stock alert.
+- Shifts with cash count.
+- Stocktake with variance.
+- Purchase → approve → receive.
+- Reports by exact time window, refunds and voids.
+- Dashboard, SSE, notification preferences.
+- Open bills with locking.
+
+POS, checked in a real browser (headless Chrome screenshots):
+- PIN login → open shift → product with options (size L +6.000đ) → payment → order on the server with the right options, shift and cashier → stock deducted by recipe.
+- Open bill saved to a table.
+- Stock count screen.
+- Owner product editor.
+- Refund dialog.
+
+Boss, checked in a real browser:
+- Dashboard with live SSE.
+- Reports for 7 days, with the comparison to the previous period.
+- Stock list.
+- Open bills ("Hoá đơn hiện tại").
+- Audit log.
+
+### Not done / not tested
+
+- APK build. The dev machine has no JDK or Android SDK; the Capacitor projects for both apps are ready.
+- FCM push to a closed app. The sender is implemented but not tested; the Boss client still needs `@capacitor/push-notifications` (see `docs/DEPLOY.md`).
+- PostgreSQL and FastAPI. SQLite and Node were chosen at the start of the project; `docs/DEPLOY.md` describes the migration path.
+- Merging or splitting bills, and moving a bill to another table.
+- Multi-store support.
+- Delivery-app integrations, which CLAUDE.md excludes from v1 anyway.
