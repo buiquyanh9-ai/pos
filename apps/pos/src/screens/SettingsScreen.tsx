@@ -33,6 +33,8 @@ const SAMPLE_ORDER: LocalOrder = {
   id: 'test',
   number: 'TEST-0001',
   deviceId: 'test',
+  shiftId: null,
+  cashierId: null,
   cashier: '',
   orderType: 'dine_in',
   tableName: '',
@@ -59,6 +61,7 @@ export function SettingsScreen() {
   const lastError = usePos((s) => s.lastError);
   const [form, setForm] = useState<PosSettings>(saved);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [section, setSection] = useState<'server' | 'store' | 'hardware' | 'about'>('server');
   const printers = useDriverOptions(listPrinters());
   const scanners = useDriverOptions(listScanners());
   const drawers = useDriverOptions(listDrawers());
@@ -103,8 +106,8 @@ export function SettingsScreen() {
   const dirty = JSON.stringify(form) !== JSON.stringify(saved);
 
   return (
-    <div className="settings">
-      <section className="card">
+    <div className="settings-layout"><aside className="settings-menu"><div><span className="eyebrow">HỆ THỐNG</span><h1>Cài đặt</h1></div>{[['server','Máy chủ','Kết nối & đồng bộ'],['store','Cửa hàng','Thông tin cửa hàng'],['hardware','Phần cứng','Thiết bị ngoại vi'],['about','Thông tin','Phiên bản & hỗ trợ']].map(([id,label,desc]) => <button key={id} className={section === id ? 'settings-menu-item active' : 'settings-menu-item'} onClick={() => setSection(id as typeof section)}><strong>{label}</strong><small>{desc}</small></button>)}</aside><div className="settings">
+      {section === 'server' && <section className="card">
         <h2>Máy chủ</h2>
         <label>
           Địa chỉ backend (LAN hoặc Internet)
@@ -125,9 +128,9 @@ export function SettingsScreen() {
           {lastSyncAt && ` · đồng bộ lần cuối ${dateTime(lastSyncAt)}`}
           {lastError && ` · ${lastError}`}
         </p>
-      </section>
+      </section>}
 
-      <section className="card">
+      {section === 'store' && <section className="card">
         <h2>Cửa hàng & thiết bị</h2>
         <label>
           Tên cửa hàng (in trên hoá đơn)
@@ -152,9 +155,9 @@ export function SettingsScreen() {
         <p className="muted small">
           Mã thiết bị: {form.deviceId} · Phiên bản {APP_VERSION} · {Capacitor.isNativePlatform() ? `Android app` : 'Trình duyệt'}
         </p>
-      </section>
+      </section>}
 
-      <section className="card">
+      {section === 'hardware' && <section className="card">
         <h2>Phần cứng</h2>
         <DriverSelect label="Máy in hoá đơn" options={printers} value={form.hardware.printer} onChange={(v) => hw('printer', v)} />
         <DriverSelect label="Máy quét mã vạch" options={scanners} value={form.hardware.scanner} onChange={(v) => hw('scanner', v)} />
@@ -184,7 +187,9 @@ export function SettingsScreen() {
           </button>
           {dirty && <span className="muted small">Lưu cài đặt trước khi thử</span>}
         </div>
-      </section>
+      </section>}
+
+      {section === 'about' && <section className="card about-card"><span className="brand-mark large">S</span><h2>ShopFlow POS</h2><p className="muted">Hệ thống bán hàng và quản lý cửa hàng dành cho mô hình F&B.</p><div className="about-row"><span>Phiên bản ứng dụng</span><strong>{APP_VERSION}</strong></div><div className="about-row"><span>Nền tảng</span><strong>{Capacitor.isNativePlatform() ? 'Android POS' : 'Windows / trình duyệt'}</strong></div><div className="about-row"><span>Đồng bộ gần nhất</span><strong>{lastSyncAt ? dateTime(lastSyncAt) : 'Chưa có'}</strong></div></section>}
 
       <div className="settings-actions">
         <button className="btn secondary" disabled={!dirty} onClick={() => setForm(saved)}>
@@ -194,7 +199,7 @@ export function SettingsScreen() {
           Lưu cài đặt
         </button>
       </div>
-    </div>
+    </div></div>
   );
 }
 

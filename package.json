@@ -1,14 +1,18 @@
 {
   "name": "shopflow-pos-monorepo",
   "private": true,
-  "workspaces": ["apps/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "concurrently -k -n server,pos -c blue,green \"npm:dev:server\" \"npm:dev:pos\"",
+    "dev": "concurrently -k -n server,pos,boss -c blue,green,magenta \"npm:dev:server\" \"npm:dev:pos\" \"npm:dev:boss\"",
     "dev:server": "npm run dev -w apps/server",
     "dev:pos": "npm run dev -w apps/pos",
-    "build": "npm run build -w apps/pos",
-    "typecheck": "npm run typecheck -w apps/server && npm run typecheck -w apps/pos",
-    "test": "npm test -w apps/server && npm test -w apps/pos"
+    "build": "npm run build -w apps/pos && npm run build -w apps/boss",
+    "typecheck": "npm run typecheck -w apps/server && npm run typecheck -w apps/pos && npm run typecheck -w apps/boss",
+    "test": "npm test -w apps/server && npm test -w apps/pos && npm test -w apps/boss",
+    "dev:boss": "npm run dev -w apps/boss"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

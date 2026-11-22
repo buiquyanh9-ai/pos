@@ -61,7 +61,7 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
                   {p.imageUrl ? <img className="product-image" src={p.imageUrl} alt="" /> : <span className={`product-image product-letter tone-${(p.category || 'x').length % 5}`}>{p.name.slice(0, 1)}</span>}
                   <span className="product-name">{p.name}</span>
                   <span className="product-price">{money(p.price)}</span>
-                  <span className={p.stock <= 0 ? 'product-stock out' : 'product-stock'}>Tồn: {p.stock}</span>
+                  {p.stock !== null && <span className={p.stock <= 0 ? 'product-stock out' : 'product-stock'}>{p.stock <= 0 ? 'Hết hàng' : `Tồn: ${p.stock}`}</span>}
                 </button>
               );
             })}
@@ -144,6 +144,7 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
       {paying && (
         <PaymentDialog
           total={t.total}
+          items={cart.lines}
           onClose={() => setPaying(false)}
           onPay={(method, paid) => {
             try {
@@ -186,7 +187,7 @@ function DiscountDialog({ subtotal, initial, onApply, onClose }: { subtotal: num
   );
 }
 
-function PaymentDialog({ total, onPay, onClose }: { total: number; onPay: (m: PaymentMethod, paid: number) => void; onClose: () => void }) {
+function PaymentDialog({ total, items, onPay, onClose }: { total: number; items: Cart['lines']; onPay: (m: PaymentMethod, paid: number) => void; onClose: () => void }) {
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [paid, setPaid] = useState(total);
   const [typed, setTyped] = useState(false);
@@ -194,7 +195,7 @@ function PaymentDialog({ total, onPay, onClose }: { total: number; onPay: (m: Pa
   const short = effectivePaid < total;
   return (
     <Modal title={`Thanh toán ${money(total)}`} onClose={onClose} wide>
-      <div className="segmented">
+      <div className="payment-modal"><div className="payment-summary"><span className="eyebrow">TÓM TẮT ĐƠN</span>{items.map((item) => <div className="summary-line" key={item.key}><span>{item.qty} × {item.name}</span><strong>{money(item.qty * item.price)}</strong></div>)}<div className="summary-total"><span>Tổng thanh toán</span><strong>{money(total)}</strong></div></div><div className="payment-controls"><div className="segmented">
         {(Object.keys(PAYMENT_LABEL) as PaymentMethod[]).map((m) => (
           <button key={m} className={m === method ? 'seg active' : 'seg'} onClick={() => setMethod(m)}>
             {PAYMENT_LABEL[m]}
@@ -241,6 +242,7 @@ function PaymentDialog({ total, onPay, onClose }: { total: number; onPay: (m: Pa
       <button className="btn primary big full" disabled={short} onClick={() => onPay(method, effectivePaid)}>
         Hoàn tất
       </button>
+      </div></div>
     </Modal>
   );
 }

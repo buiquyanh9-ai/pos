@@ -50,12 +50,16 @@ export function encodeReceipt(receipt: ReceiptData, paperWidthChars = 32): Uint8
     ...receipt.storeAddress ? [line(receipt.storeAddress)] : [],
     [ESC, 0x61, 0x00],
     line(`Don ${receipt.orderNumber}`),
+    ...(receipt.orderTypeLabel ? [line(`Loai don: ${receipt.orderTypeLabel}`)] : []),
+    ...(receipt.tableName ? [line(`Ban: ${receipt.tableName}`)] : []),
+    ...(receipt.note ? [line(`Ghi chu: ${receipt.note}`)] : []),
     line(new Date(receipt.createdAt).toLocaleString('vi-VN')),
     line('-'.repeat(width)),
   ];
   for (const item of receipt.lines) {
     output.push(line(item.name));
     output.push(line(right(`  ${item.qty} x ${item.price.toLocaleString('en-US')}`, item.lineTotal.toLocaleString('en-US'))));
+    if (item.note) output.push(line(`  * ${item.note}`));
   }
   output.push(
     line('-'.repeat(width)),
@@ -64,9 +68,9 @@ export function encodeReceipt(receipt: ReceiptData, paperWidthChars = 32): Uint8
     [ESC, 0x45, 0x01],
     line(right('TONG', receipt.total.toLocaleString('en-US'))),
     [ESC, 0x45, 0x00],
-    line(`Thanh toan: ${{ cash: 'Tien mat', card: 'The', transfer: 'Chuyen khoan' }[receipt.paymentMethod]}`),
+    line(`Thanh toan: ${{ cash: 'Tien mat', card: 'The', transfer: 'Chuyen khoan', qr: 'QR' }[receipt.paymentMethod]}`),
     ...(receipt.paymentMethod === 'cash' ? [line(right('Khach dua', receipt.paid.toLocaleString('en-US')))] : []),
-    ...(receipt.change ? [line(right('Change', receipt.change.toLocaleString('en-US')))] : []),
+    ...(receipt.change ? [line(right('Tien thoi', receipt.change.toLocaleString('en-US')))] : []),
     line(),
     ...(receipt.footer ? [line(receipt.footer)] : []),
     line(),

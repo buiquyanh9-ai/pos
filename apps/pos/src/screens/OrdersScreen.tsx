@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, type Summary } from '../lib/api';
+import { api } from '../lib/api';
 import { dateTime, localDayRange, money, time } from '../lib/format';
 import { getState, retryOrder, usePos, voidOrder } from '../lib/store';
 import { printReceipt } from '../lib/receipt';
 import { notify } from '../lib/notify';
-import { ORDER_TYPE_LABEL, PAYMENT_LABEL, type LocalOrder, type OrderType } from '../lib/types';
+import { ORDER_TYPE_LABEL, PAYMENT_LABEL, type LocalOrder, type OrderType, type Summary } from '../lib/types';
 import { Modal } from '../components/Modal';
 
 const SYNC_LABEL: Record<LocalOrder['sync'], string> = { pending: 'Chờ gửi', synced: 'Đã đồng bộ', rejected: 'Bị từ chối' };
@@ -27,7 +27,7 @@ export function OrdersScreen() {
     if (connection !== 'online') return;
     const { settings } = getState();
     api
-      .summary(settings, from, to)
+      .summary(settings, { from, to, shiftId: getState().shift?.id })
       .then(setSummary)
       .catch(() => setSummary(null));
   }, [connection, orders, from, to]);
@@ -46,7 +46,7 @@ export function OrdersScreen() {
         </div>
         <div className="stat">
           <span className="muted">Doanh thu toàn cửa hàng</span>
-          <strong>{summary ? money(summary.revenue) : '—'}</strong>
+          <strong>{summary ? money(summary.grossSales) : '—'}</strong>
         </div>
       </div>
       <div className="orders-toolbar"><div className="filter-segment"><button className={scope === 'today' ? 'active' : ''} onClick={() => setScope('today')}>Hôm nay</button><button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>Tất cả</button></div><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">Mọi trạng thái</option><option value="synced">Đã đồng bộ</option><option value="pending">Chờ gửi</option><option value="voided">Đã huỷ</option></select><select value={type} onChange={(e) => setType(e.target.value as 'all' | OrderType)}><option value="all">Mọi loại đơn</option>{(Object.keys(ORDER_TYPE_LABEL) as OrderType[]).map((key) => <option key={key} value={key}>{ORDER_TYPE_LABEL[key]}</option>)}</select></div>
@@ -137,7 +137,7 @@ function OrderDetail({ order: o, onClose }: { order: LocalOrder; onClose: () => 
             onClick={async () => {
               setBusy(true);
               try {
-                await voidOrder(o.id);
+                await voidOrder(o.id, 'Huỷ từ màn hình đơn hàng');
                 notify(`Đã huỷ đơn ${o.number}`, 'success');
                 setConfirmVoid(false);
               } catch (err) {

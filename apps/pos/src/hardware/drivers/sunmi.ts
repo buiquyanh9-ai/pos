@@ -8,7 +8,7 @@ function bridge(): SunmiBridge | undefined {
   return candidate?.printText ? candidate : undefined;
 }
 function receiptText(r: ReceiptData): string {
-  return [r.storeName, r.storeAddress, `Order ${r.orderNumber}`, '------------------------------', ...r.lines.flatMap((i) => [`${i.qty} x ${printableText(i.name)}`, `             ${i.lineTotal.toLocaleString('en-US')}`]), '------------------------------', `TOTAL       ${r.total.toLocaleString('en-US')}`, `Payment: ${r.paymentMethod}`, r.footer, ''].filter(Boolean).join('\n');
+  return [r.storeName, r.storeAddress, `Don ${r.orderNumber}`, r.orderTypeLabel, r.tableName ? `Ban: ${r.tableName}` : undefined, r.note ? `Ghi chu: ${r.note}` : undefined, '------------------------------', ...r.lines.flatMap((i) => [`${i.qty} x ${printableText(i.name)}`, i.note ? `  * ${printableText(i.note)}` : undefined, `             ${i.lineTotal.toLocaleString('en-US')}`]), '------------------------------', `TONG       ${r.total.toLocaleString('en-US')}`, `Thanh toan: ${r.paymentMethod}`, r.footer, ''].filter((value): value is string => Boolean(value)).join('\n');
 }
 
 export const sunmiPrinter: PrinterDriver = {
