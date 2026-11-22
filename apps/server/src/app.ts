@@ -1,5 +1,8 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { DB } from './db.ts';
 import { now } from './db.ts';
 import { authenticate, safeEqual } from './auth.ts';
@@ -45,6 +48,24 @@ export function createApp({ db, apiKey }: AppOptions) {
   app.use('/api/hardware', hardwareRouter);
 
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'not found')));
+
+  // Built web apps (npm run build): POS at /pos/, Boss at /boss/. One port serves everything,
+  // so a phone on the same Wi-Fi only needs http://<pc-ip>:4000/boss/.
+  const appsDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  for (const [route, dir] of [['/pos', 'pos'], ['/boss', 'boss']] as const) {
+    const dist = join(appsDir, dir, 'dist');
+    if (!existsSync(join(dist, 'index.html'))) continue;
+    // Non-strict routing treats /pos and /pos/ alike: only redirect the exact slash-less path.
+    app.get(route, (req, res, next) => (req.originalUrl === route ? res.redirect(`${route}/`) : next()));
+    app.use(route, express.static(dist, { index: 'index.html', maxAge: '1h', setHeaders: (res, path) => path.endsWith('index.html') && res.setHeader('cache-control', 'no-cache') }));
+  }
+  app.get('/', (_req, res) => {
+    res.type('html').send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ShopFlow</title>
+<body style="font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#eff6ff">
+<div style="display:flex;flex-direction:column;gap:12px;width:min(360px,90vw)"><h1 style="color:#1d4ed8">ShopFlow</h1>
+<a href="/pos/" style="padding:16px;border-radius:12px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700">ShopFlow POS (bán hàng)</a>
+<a href="/boss/" style="padding:16px;border-radius:12px;background:#f97316;color:#fff;text-decoration:none;font-weight:700">ShopFlow Boss (điện thoại chủ)</a></div></body>`);
+  });
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof HttpError) {

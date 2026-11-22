@@ -32,6 +32,19 @@ npm run dev                         # backend :4000, POS :5173, Boss :5174
 - Boss: http://localhost:5174. Log in with the owner's username and password. It is laid out for a phone screen; use the browser's device toolbar on a PC.
 - On first start the backend creates **sample data**: the store "Cửa hàng mẫu", a café menu with recipes, inventory, tables and suppliers. Every sample record is marked "mẫu" (sample).
 
+### POS on the PC, Boss on your phone (same Wi-Fi)
+
+```powershell
+npm run serve        # builds POS + Boss, then serves everything on port 4000
+```
+
+- On the PC, open the POS at `http://localhost:4000/pos/`.
+- On the phone, use the same Wi-Fi and open `http://<PC IP>:4000/boss/` (e.g. `http://192.168.2.211:4000/boss/`). The server prints the PC's LAN IP when it starts. The browser's *Add to Home screen* turns it into an app icon.
+- Every sale, refund, shift close, stock alert and open bill reaches the phone within about a second (SSE). Purchase approvals made on the phone reach the POS.
+- If the phone cannot connect, allow port 4000 in Windows Firewall. In PowerShell **as Administrator**:
+  `New-NetFirewallRule -DisplayName "ShopFlow 4000" -Direction Inbound -Protocol TCP -LocalPort 4000 -Action Allow -Profile Private`.
+  Also check that the Wi-Fi network is set to *Private*.
+
 ### Demo accounts (sample data only)
 
 | Role | Username | Password (Boss) | PIN (POS) |
