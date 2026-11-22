@@ -97,6 +97,13 @@ CREATE TABLE IF NOT EXISTS options (
   price_delta INTEGER NOT NULL DEFAULT 0,
   sort        INTEGER NOT NULL DEFAULT 0
 );
+-- Extra stock used when an option is chosen (e.g. topping "Thêm trân châu" uses 0.03 kg trân châu).
+CREATE TABLE IF NOT EXISTS option_recipes (
+  option_id TEXT NOT NULL REFERENCES options(id) ON DELETE CASCADE,
+  item_id   TEXT NOT NULL REFERENCES inventory_items(id),
+  qty       REAL NOT NULL CHECK (qty > 0),
+  PRIMARY KEY (option_id, item_id)
+);
 CREATE TABLE IF NOT EXISTS product_option_groups (
   product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   group_id   TEXT NOT NULL REFERENCES option_groups(id) ON DELETE CASCADE,
@@ -299,6 +306,8 @@ const COLUMNS: [table: string, column: string, ddl: string][] = [
   ['order_items', 'options', "TEXT NOT NULL DEFAULT ''"],
   ['order_items', 'category', "TEXT NOT NULL DEFAULT ''"],
   ['order_items', 'unit_cost', 'INTEGER'],
+  ['order_items', 'option_ids', "TEXT NOT NULL DEFAULT ''"], // comma-separated option ids
+  ['options', 'recipe_factor', 'REAL NOT NULL DEFAULT 1'], // e.g. size L = 1.4 x the base recipe
 ];
 
 function migrate(db: DB) {

@@ -51,11 +51,12 @@ const PRODUCTS: [string, string, string | null, string, string, number, [string,
   ['p-coca', 'COCA', '8935049500445', 'Coca-Cola lon', 'c-dong-chai', 15000, [['i-coca', 1]], []],
 ];
 
-const OPTION_GROUPS: [string, string, boolean, boolean, [string, number][]][] = [
-  ['g-size', 'Size', false, true, [['M', 0], ['L', 6000]]],
+// group id, name, multi, required, options [name, price delta, recipe factor, extra recipe]
+const OPTION_GROUPS: [string, string, boolean, boolean, [string, number, number?, [string, number][]?][]][] = [
+  ['g-size', 'Size', false, true, [['M', 0], ['L', 6000, 1.4]]],
   ['g-da', 'Đá', false, false, [['Bình thường', 0], ['Ít đá', 0], ['Không đá', 0]]],
   ['g-duong', 'Đường', false, false, [['100%', 0], ['70%', 0], ['50%', 0], ['0%', 0]]],
-  ['g-topping', 'Topping', true, false, [['Thêm trân châu', 5000], ['Thạch dừa', 5000], ['Kem cheese', 8000]]],
+  ['g-topping', 'Topping', true, false, [['Thêm trân châu', 5000, 1, [['i-tran-chau', 0.03]]], ['Thạch dừa', 5000], ['Kem cheese', 8000, 1, [['i-sua-tuoi', 0.03]]]]],
 ];
 
 export function seedIfEmpty(db: DB) {
@@ -82,7 +83,10 @@ export function seedIfEmpty(db: DB) {
 
     for (const [id, name, multi, required, opts] of OPTION_GROUPS) {
       db.prepare('INSERT INTO option_groups (id, name, multi, required) VALUES (?, ?, ?, ?)').run(id, name, multi ? 1 : 0, required ? 1 : 0);
-      opts.forEach(([o, delta], i) => db.prepare('INSERT INTO options (id, group_id, name, price_delta, sort) VALUES (?, ?, ?, ?, ?)').run(`${id}-${i}`, id, o, delta, i));
+      opts.forEach(([o, delta, factor, extra], i) => {
+        db.prepare('INSERT INTO options (id, group_id, name, price_delta, recipe_factor, sort) VALUES (?, ?, ?, ?, ?, ?)').run(`${id}-${i}`, id, o, delta, factor ?? 1, i);
+        for (const [item, q] of extra ?? []) db.prepare('INSERT INTO option_recipes (option_id, item_id, qty) VALUES (?, ?, ?)').run(`${id}-${i}`, item, q);
+      });
     }
 
     // Remove v1 sample products that are not part of the v2 menu (keeps history intact via soft delete).

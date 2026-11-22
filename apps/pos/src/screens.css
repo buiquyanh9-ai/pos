@@ -84,3 +84,5 @@
 .clickable:hover td { background: var(--surface-2); }
 .admin-inline { width: auto; min-width: 180px; }
 .stock-actions { gap: 8px; flex-wrap: wrap; }
+.option-edit { display: grid; grid-template-columns: 1.4fr 0.8fr 0.6fr 1.6fr 0.7fr auto; gap: 6px; align-items: center; }
+.option-edit input, .option-edit select { min-height: 44px; padding: 0 8px; }

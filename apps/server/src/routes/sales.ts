@@ -78,7 +78,13 @@ export function salesRoutes(db: DB) {
       let productId = str(it.productId, `items[${i}].productId`, { optional: true, max: 64 }) ?? null;
       const info = productId ? productInfo.get(productId) : undefined;
       if (productId && !info) productId = null; // product deleted meanwhile: keep the sale, skip stock
-      const unitCost = productId ? productUnitCost(db, productId) : null;
+      const rawIds = it.optionIds;
+      if (rawIds !== undefined && (!Array.isArray(rawIds) || rawIds.length > 20 || rawIds.some((x) => typeof x !== 'string'))) {
+        throw bad(`items[${i}].optionIds must be an array of ids`);
+      }
+      // Unknown option ids (deleted meanwhile) are ignored for stock but the sale is kept.
+      const optionIds = ((rawIds as string[] | undefined) ?? []).filter((x) => db.prepare('SELECT 1 FROM options WHERE id = ?').get(x));
+      const unitCost = productId ? productUnitCost(db, productId, optionIds) : null;
       return {
         productId,
         name: reqStr(it.name, `items[${i}].name`),
@@ -88,6 +94,7 @@ export function salesRoutes(db: DB) {
         lineTotal: price * qty,
         note: str(it.note, `items[${i}].note`, { optional: true, max: 200 }) ?? '',
         options: str(it.options, `items[${i}].options`, { optional: true, max: 300 }) ?? '',
+        optionIds,
         unitCost,
       };
     });
@@ -129,9 +136,9 @@ export function salesRoutes(db: DB) {
         subtotal, discount, total, paymentMethod, paid, change, costTotal, createdAt, now(),
       );
       const ins = db.prepare(
-        'INSERT INTO order_items (order_id, product_id, name, category, price, qty, line_total, note, options, unit_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO order_items (order_id, product_id, name, category, price, qty, line_total, note, options, option_ids, unit_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       );
-      for (const it of items) ins.run(id, it.productId, it.name, it.category, it.price, it.qty, it.lineTotal, it.note, it.options, it.unitCost);
+      for (const it of items) ins.run(id, it.productId, it.name, it.category, it.price, it.qty, it.lineTotal, it.note, it.options, it.optionIds.join(','), it.unitCost);
       applyOrderStock(db, id, items, -1, { type: 'sale', userId: cashierId });
       logChange(db, 'order', id, 'upsert');
       return true;
@@ -190,8 +197,18 @@ export function salesRoutes(db: DB) {
         'UPDATE orders SET status = ?, status_reason = ?, status_at = ?, status_by = ?, refund_amount = ?, refund_shift_id = ? WHERE id = ?',
       ).run(status, reason, now(), userId, kind === 'refund' ? Number(row.total) : 0, kind === 'refund' ? shiftId : null, id);
       if (restock) {
-        const lines = db.prepare('SELECT product_id AS productId, qty FROM order_items WHERE order_id = ?').all(id) as { productId: string | null; qty: number }[];
-        applyOrderStock(db, id, lines.map((l) => ({ productId: l.productId, qty: Number(l.qty) })), 1, { type: kind, userId, reason });
+        const lines = db.prepare('SELECT product_id, qty, option_ids FROM order_items WHERE order_id = ?').all(id);
+        applyOrderStock(
+          db,
+          id,
+          lines.map((l) => ({
+            productId: (l.product_id as string | null) ?? null,
+            qty: Number(l.qty),
+            optionIds: ((l.option_ids as string) || '').split(',').filter(Boolean),
+          })),
+          1,
+          { type: kind, userId, reason },
+        );
       }
       logChange(db, 'order', id, 'upsert');
       audit(db, userId, `order.${kind}`, 'order', id, { reason, restock });

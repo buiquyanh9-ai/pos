@@ -333,3 +333,24 @@ test('E2E: POS sale -> stock -> Boss revenue -> low-stock alert -> stocktake -> 
   for (const t of ['adjust', 'sale', 'count', 'import']) assert.ok(types.includes(t), `missing ${t}`);
   void start;
 });
+
+test('options scale the recipe (size L) and add their own stock (topping); void returns exactly that', async () => {
+  const tea0 = (await item('i-tra-den')).qty;
+  const pearl0 = (await item('i-tran-chau')).qty;
+  const o = order({
+    items: [{ productId: 'p-tra-sua', name: 'Trà sữa trân châu', price: 43000, qty: 2, options: 'L, Thêm trân châu', optionIds: ['g-size-1', 'g-topping-0'] }],
+    paid: 86000,
+  });
+  const r = await call('POST', '/orders', o, 'cashier');
+  assert.equal(r.status, 201);
+  const round = (n: number) => Math.round(n * 1000) / 1000;
+  // tea: 0.006 x 1.4 x 2 = 0.0168 ; pearls: (0.05 x 1.4 + 0.03) x 2 = 0.2
+  assert.equal(round(tea0 - (await item('i-tra-den')).qty), round(0.0168));
+  assert.equal(round(pearl0 - (await item('i-tran-chau')).qty), 0.2);
+  assert.ok(r.body.costTotal > 0);
+  await call('POST', `/orders/${o.id}/void`, { reason: 'test' }, 'cashier');
+  assert.equal(round((await item('i-tran-chau')).qty), round(pearl0));
+  const g = (await call('GET', '/option-groups')).body.optionGroups.find((x: { id: string }) => x.id === 'g-topping');
+  assert.equal(g.options[0].recipe[0].itemId, 'i-tran-chau');
+  assert.equal((await call('POST', '/orders', order({ items: [{ productId: 'p-tra-sua', name: 'x', price: 1, qty: 1, optionIds: 'bad' }], paid: 1 }), 'cashier')).status, 400);
+});

@@ -121,7 +121,7 @@ export function toOrderItems(c: Cart): OrderItem[] {
     qty: l.qty,
     lineTotal: l.price * l.qty,
     ...(l.note ? { note: l.note } : {}),
-    ...(l.options.length ? { options: optionsLabel(l.options) } : {}),
+    ...(l.options.length ? { options: optionsLabel(l.options), optionIds: l.options.map((o) => o.optionId) } : {}),
   }));
 }
 

@@ -25,6 +25,11 @@ export function catalogRoutes(db: DB) {
   function optionGroupsByProduct() {
     const groups = db.prepare('SELECT * FROM option_groups').all();
     const opts = db.prepare('SELECT * FROM options ORDER BY sort, name').all();
+    const optRecipes = new Map<string, { itemId: string; qty: number }[]>();
+    for (const r of db.prepare('SELECT * FROM option_recipes').all()) {
+      const k = r.option_id as string;
+      optRecipes.set(k, [...(optRecipes.get(k) ?? []), { itemId: r.item_id as string, qty: Number(r.qty) }]);
+    }
     const byGroup = new Map<string, Row[]>();
     for (const o of opts) byGroup.set(o.group_id as string, [...(byGroup.get(o.group_id as string) ?? []), o]);
     const groupDto = new Map(
@@ -35,7 +40,13 @@ export function catalogRoutes(db: DB) {
           name: g.name as string,
           multi: Number(g.multi) === 1,
           required: Number(g.required) === 1,
-          options: (byGroup.get(g.id as string) ?? []).map((o) => ({ id: o.id as string, name: o.name as string, priceDelta: Number(o.price_delta) })),
+          options: (byGroup.get(g.id as string) ?? []).map((o) => ({
+            id: o.id as string,
+            name: o.name as string,
+            priceDelta: Number(o.price_delta),
+            recipeFactor: Number(o.recipe_factor ?? 1),
+            recipe: optRecipes.get(o.id as string) ?? [],
+          })),
         },
       ]),
     );
@@ -295,18 +306,31 @@ export function catalogRoutes(db: DB) {
     }
     if (b.options !== undefined) {
       if (!Array.isArray(b.options) || !b.options.length) throw bad('options must be a non-empty array');
-      db.prepare('DELETE FROM options WHERE group_id = ?').run(id);
-      const ins = db.prepare('INSERT INTO options (id, group_id, name, price_delta, sort) VALUES (?, ?, ?, ?, ?)');
-      b.options.forEach((raw: unknown, i: number) => {
+      // Keep option ids stable (order lines reference them); delete only the ones removed.
+      const keep: string[] = [];
+      const up = db.prepare(
+        `INSERT INTO options (id, group_id, name, price_delta, recipe_factor, sort) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, price_delta = excluded.price_delta, recipe_factor = excluded.recipe_factor, sort = excluded.sort`,
+      );
+      (b.options as unknown[]).forEach((raw: unknown, i: number) => {
         const o = (raw ?? {}) as Row;
-        ins.run(
-          str(o.id, `options[${i}].id`, { optional: true, max: 64 }) ?? randomUUID(),
-          id,
-          reqStr(o.name, `options[${i}].name`, 64),
-          int(o.priceDelta, `options[${i}].priceDelta`, { optional: true, min: -MAX_MONEY, max: MAX_MONEY }) ?? 0,
-          i,
-        );
+        const oid = str(o.id, `options[${i}].id`, { optional: true, max: 64 }) ?? randomUUID();
+        const factor = num(o.recipeFactor, `options[${i}].recipeFactor`, { optional: true, min: 0 }) ?? 1;
+        const delta = int(o.priceDelta, `options[${i}].priceDelta`, { optional: true, min: -MAX_MONEY, max: MAX_MONEY }) ?? 0;
+        up.run(oid, id, reqStr(o.name, `options[${i}].name`, 64), delta, factor, i);
+        keep.push(oid);
+        if (o.recipe !== undefined) {
+          if (!Array.isArray(o.recipe)) throw bad(`options[${i}].recipe must be an array`);
+          db.prepare('DELETE FROM option_recipes WHERE option_id = ?').run(oid);
+          (o.recipe as unknown[]).forEach((rr, j) => {
+            const r = (rr ?? {}) as Row;
+            const itemId = reqStr(r.itemId, `options[${i}].recipe[${j}].itemId`, 64);
+            if (!db.prepare('SELECT 1 FROM inventory_items WHERE id = ?').get(itemId)) throw bad(`options[${i}].recipe[${j}].itemId not found`);
+            db.prepare('INSERT INTO option_recipes (option_id, item_id, qty) VALUES (?, ?, ?)').run(oid, itemId, num(r.qty, `options[${i}].recipe[${j}].qty`, { min: 0.0001 })!);
+          });
+        }
       });
+      db.prepare(`DELETE FROM options WHERE group_id = ? AND id NOT IN (${keep.map(() => '?').join(',')})`).run(id, ...keep);
     }
   }
 

@@ -14,6 +14,10 @@ export interface Option {
   id: string;
   name: string;
   priceDelta: number;
+  /** Multiplies the product recipe (e.g. size L = 1.4). */
+  recipeFactor?: number;
+  /** Extra stock this option uses per portion (e.g. topping). */
+  recipe?: { itemId: string; qty: number }[];
 }
 
 export interface OptionGroup {
@@ -81,6 +85,8 @@ export interface OrderItem {
   note?: string;
   /** Human-readable chosen options, e.g. "L, Ít đá". */
   options?: string;
+  /** Chosen option ids: the server uses them for recipe scaling and topping stock. */
+  optionIds?: string[];
 }
 
 export type OrderStatus = 'completed' | 'voided' | 'refunded';

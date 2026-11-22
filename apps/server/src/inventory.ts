@@ -74,21 +74,39 @@ export function moveStock(db: DB, itemId: string, delta: number, ref: MoveRef) {
   return after;
 }
 
-interface ConsumeLine {
+export interface ConsumeLine {
   productId: string | null;
   qty: number;
+  /** Chosen options: their recipe_factor scales the base recipe, their option_recipes add stock. */
+  optionIds?: string[];
+}
+
+/** Stock used by ONE portion of a product with the given options, per inventory item. */
+export function portionUsage(db: DB, productId: string, optionIds: string[] = []) {
+  const usage = new Map<string, number>();
+  let factor = 1;
+  const opts = optionIds.length
+    ? db.prepare(`SELECT id, recipe_factor FROM options WHERE id IN (${optionIds.map(() => '?').join(',')})`).all(...optionIds)
+    : [];
+  for (const o of opts) factor *= Number(o.recipe_factor ?? 1) || 1;
+  for (const r of db.prepare('SELECT item_id, qty FROM recipes WHERE product_id = ?').all(productId)) {
+    usage.set(r.item_id as string, Number(r.qty) * factor);
+  }
+  for (const o of opts) {
+    for (const r of db.prepare('SELECT item_id, qty FROM option_recipes WHERE option_id = ?').all(o.id as string)) {
+      const id = r.item_id as string;
+      usage.set(id, (usage.get(id) ?? 0) + Number(r.qty));
+    }
+  }
+  return usage;
 }
 
 /** Recipe consumption for a list of sold lines, aggregated per inventory item. */
 export function recipeUsage(db: DB, lines: ConsumeLine[]) {
   const usage = new Map<string, number>();
-  const stmt = db.prepare('SELECT item_id, qty FROM recipes WHERE product_id = ?');
   for (const l of lines) {
     if (!l.productId) continue;
-    for (const r of stmt.all(l.productId)) {
-      const id = r.item_id as string;
-      usage.set(id, round((usage.get(id) ?? 0) + Number(r.qty) * l.qty));
-    }
+    for (const [id, q] of portionUsage(db, l.productId, l.optionIds)) usage.set(id, round((usage.get(id) ?? 0) + q * l.qty));
   }
   return usage;
 }
@@ -100,12 +118,16 @@ export function applyOrderStock(db: DB, orderId: string, lines: ConsumeLine[], s
   }
 }
 
-/** Unit cost of one product: recipe cost if it has a recipe, else the manual products.cost. */
-export function productUnitCost(db: DB, productId: string): number | null {
-  const rows = db
-    .prepare('SELECT r.qty, i.unit_cost FROM recipes r JOIN inventory_items i ON i.id = r.item_id WHERE r.product_id = ?')
-    .all(productId);
-  if (rows.length) return Math.round(rows.reduce((s, r) => s + Number(r.qty) * Number(r.unit_cost), 0));
+/** Unit cost of one portion: recipe (scaled by options, plus option recipes) x ingredient cost,
+ *  else the manual products.cost. */
+export function productUnitCost(db: DB, productId: string, optionIds: string[] = []): number | null {
+  const hasRecipe = Boolean(db.prepare('SELECT 1 FROM recipes WHERE product_id = ?').get(productId));
+  if (hasRecipe) {
+    const cost = db.prepare('SELECT unit_cost FROM inventory_items WHERE id = ?');
+    let total = 0;
+    for (const [id, q] of portionUsage(db, productId, optionIds)) total += q * Number(cost.get(id)?.unit_cost ?? 0);
+    return Math.round(total);
+  }
   const p = db.prepare('SELECT cost FROM products WHERE id = ?').get(productId);
   return p && p.cost !== null && p.cost !== undefined ? Number(p.cost) : null;
 }

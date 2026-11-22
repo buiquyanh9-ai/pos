@@ -129,7 +129,7 @@ export const api = {
       orderType: o.orderType,
       tableName: o.tableName,
       note: o.note,
-      items: o.items.map(({ productId, name, price, qty, note, options }) => ({ productId, name, price, qty, note, options })),
+      items: o.items.map(({ productId, name, price, qty, note, options, optionIds }) => ({ productId, name, price, qty, note, options, optionIds })),
       discount: o.discount,
       paymentMethod: o.paymentMethod,
       paid: o.paid,
@@ -184,7 +184,11 @@ export const api = {
   productsAll: (c: ApiConfig) => request<Catalog & { products: (Product & { recipe: { itemId: string; itemName: string; unit: string; qty: number }[] })[] }>(c, 'GET', '/products?includeInactive=1'),
   saveCategory: (c: ApiConfig, id: string | null, body: { name?: string; sort?: number; active?: boolean }) =>
     request<{ ok?: boolean; id?: string }>(c, id ? 'PUT' : 'POST', id ? `/categories/${encodeURIComponent(id)}` : '/categories', body),
-  saveOptionGroup: (c: ApiConfig, id: string | null, body: { name?: string; multi?: boolean; required?: boolean; options?: { id?: string; name: string; priceDelta: number }[] }) =>
+  saveOptionGroup: (
+    c: ApiConfig,
+    id: string | null,
+    body: { name?: string; multi?: boolean; required?: boolean; options?: { id?: string; name: string; priceDelta: number; recipeFactor?: number; recipe?: { itemId: string; qty: number }[] }[] },
+  ) =>
     id ? request<OptionGroup>(c, 'PUT', `/option-groups/${encodeURIComponent(id)}`, body) : request<OptionGroup>(c, 'POST', '/option-groups', body),
   saveTable: (c: ApiConfig, id: string | null, body: { name?: string; area?: string; sort?: number; active?: boolean }) =>
     id ? request<DiningTable>(c, 'PUT', `/tables/${encodeURIComponent(id)}`, body) : request<DiningTable>(c, 'POST', '/tables', body),

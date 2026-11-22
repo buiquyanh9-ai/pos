@@ -57,7 +57,8 @@ Owner only: `GET/POST/PUT /users` · `GET /audit`
 - The server recomputes subtotal, total and change, and validates them.
 - Rules: `paid >= total`; only cash payments can have change; `discount <= subtotal`.
 - Payment methods: `cash | transfer | qr | card`. Order types: `dine_in | takeaway | delivery`.
-- Each item is `{productId, name, price (incl. options), qty, note?, options?}`.
+- Each item is `{productId, name, price (incl. options), qty, note?, options?, optionIds?}`.
+- `optionIds` drive stock: each option's `recipeFactor` multiplies the product recipe (e.g. size L = 1.4×), and its own `recipe` adds stock per portion (e.g. a topping). Cost of goods uses the same rule.
 
 ### Inventory & purchasing
 

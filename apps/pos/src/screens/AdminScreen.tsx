@@ -53,7 +53,7 @@ export function AdminScreen() {
       </nav>
       <section className="stock-body">
         {section === 'products' && <Products products={products} categories={categories} groups={groups} items={items} onChanged={reload} />}
-        {section === 'options' && <Options groups={groups} onChanged={reload} />}
+        {section === 'options' && <Options groups={groups} items={items} onChanged={reload} />}
         {section === 'items' && <Items items={items} onChanged={reload} />}
         {section === 'tables' && <Tables />}
         {section === 'staff' && <Staff />}
@@ -269,7 +269,7 @@ function ProductForm({ product: p, categories, groups, items, onClose, onSaved }
 }
 
 // ---------------------------------------------------------------- option groups
-function Options({ groups, onChanged }: { groups: OptionGroup[]; onChanged: () => void }) {
+function Options({ groups, items, onChanged }: { groups: OptionGroup[]; items: InventoryItem[]; onChanged: () => void }) {
   const [editing, setEditing] = useState<OptionGroup | 'new' | null>(null);
   return (
     <>
@@ -300,17 +300,31 @@ function Options({ groups, onChanged }: { groups: OptionGroup[]; onChanged: () =
           ))}
         </tbody>
       </table>
-      {editing && <OptionForm group={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => (setEditing(null), onChanged())} />}
+      {editing && <OptionForm group={editing === 'new' ? null : editing} items={items} onClose={() => setEditing(null)} onSaved={() => (setEditing(null), onChanged())} />}
     </>
   );
 }
 
-function OptionForm({ group: g, onClose, onSaved }: { group: OptionGroup | null; onClose: () => void; onSaved: () => void }) {
+function OptionForm({ group: g, items, onClose, onSaved }: { group: OptionGroup | null; items: InventoryItem[]; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(g?.name ?? '');
   const [multi, setMulti] = useState(g?.multi ?? false);
   const [required, setRequired] = useState(g?.required ?? false);
-  const [options, setOptions] = useState<{ id?: string; name: string; price: string }[]>(g?.options.map((o) => ({ id: o.id, name: o.name, price: String(o.priceDelta) })) ?? [{ name: '', price: '0' }]);
-  const valid = name.trim() && options.length > 0 && options.every((o) => o.name.trim() && Number.isInteger(num(o.price || '0')));
+  type Row = { id?: string; name: string; price: string; factor: string; itemId: string; itemQty: string };
+  const [options, setOptions] = useState<Row[]>(
+    g?.options.map((o) => ({
+      id: o.id,
+      name: o.name,
+      price: String(o.priceDelta),
+      factor: String(o.recipeFactor ?? 1),
+      itemId: o.recipe?.[0]?.itemId ?? '',
+      itemQty: o.recipe?.[0] ? String(o.recipe[0].qty) : '',
+    })) ?? [{ name: '', price: '0', factor: '1', itemId: '', itemQty: '' }],
+  );
+  const set = (i: number, patch: Partial<Row>) => setOptions(options.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const valid =
+    name.trim() &&
+    options.length > 0 &&
+    options.every((o) => o.name.trim() && Number.isInteger(num(o.price || '0')) && dec(o.factor || '1') > 0 && (!o.itemId || dec(o.itemQty) > 0));
   return (
     <Modal title={g ? `Sửa: ${g.name}` : 'Nhóm tuỳ chọn mới'} onClose={onClose}>
       <div className="admin-form">
@@ -324,16 +338,29 @@ function OptionForm({ group: g, onClose, onSaved }: { group: OptionGroup | null;
         <label className="check">
           <input type="checkbox" checked={multi} onChange={(e) => setMulti(e.target.checked)} /> Cho chọn nhiều (topping)
         </label>
+        <p className="muted small">
+          Hệ số định mức nhân toàn bộ công thức món (vd size L = 1,4). Nguyên liệu thêm dùng cho topping (vd Thêm trân châu = 0,03 kg trân châu).
+        </p>
         {options.map((o, i) => (
-          <div key={i} className="recipe-row">
-            <input value={o.name} onChange={(e) => setOptions(options.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder="Tên lựa chọn" />
-            <input inputMode="numeric" value={o.price} onChange={(e) => setOptions(options.map((x, j) => (j === i ? { ...x, price: e.target.value } : x)))} placeholder="+ giá" />
+          <div key={i} className="option-edit">
+            <input value={o.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="Tên lựa chọn" />
+            <input inputMode="numeric" value={o.price} onChange={(e) => set(i, { price: e.target.value })} placeholder="+ giá" title="Giá cộng thêm" />
+            <input inputMode="decimal" value={o.factor} onChange={(e) => set(i, { factor: e.target.value })} placeholder="Hệ số" title="Hệ số định mức" />
+            <select value={o.itemId} onChange={(e) => set(i, { itemId: e.target.value })} title="Nguyên liệu thêm">
+              <option value="">— Không dùng thêm —</option>
+              {items.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name} ({x.unit})
+                </option>
+              ))}
+            </select>
+            <input inputMode="decimal" value={o.itemQty} disabled={!o.itemId} onChange={(e) => set(i, { itemQty: e.target.value })} placeholder="Lượng" />
             <button className="icon-btn" aria-label="Xoá" onClick={() => setOptions(options.filter((_, j) => j !== i))}>
               ✕
             </button>
           </div>
         ))}
-        <button className="btn secondary" onClick={() => setOptions([...options, { name: '', price: '0' }])}>
+        <button className="btn secondary" onClick={() => setOptions([...options, { name: '', price: '0', factor: '1', itemId: '', itemQty: '' }])}>
           ＋ Lựa chọn
         </button>
         <button
@@ -344,7 +371,13 @@ function OptionForm({ group: g, onClose, onSaved }: { group: OptionGroup | null;
               name: name.trim(),
               multi,
               required,
-              options: options.map((o) => ({ id: o.id, name: o.name.trim(), priceDelta: num(o.price || '0') })),
+              options: options.map((o) => ({
+                id: o.id,
+                name: o.name.trim(),
+                priceDelta: num(o.price || '0'),
+                recipeFactor: dec(o.factor || '1'),
+                recipe: o.itemId ? [{ itemId: o.itemId, qty: dec(o.itemQty) }] : [],
+              })),
             })
               .then(() => (notify('Đã lưu tuỳ chọn', 'success'), onSaved()))
               .catch(fail)
