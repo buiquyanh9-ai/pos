@@ -1,4 +1,11 @@
-import type { InventoryItem, Purchase, Shift, ShiftReport, StockMove, Stocktake, Summary, User } from '@shopflow/shared';
+import type { InventoryItem, OpenOrder, Purchase, Shift, ShiftReport, StockMove, Stocktake, Summary, User } from '@shopflow/shared';
+
+/** Cart as stored by the POS inside an open bill (only the fields Boss shows). */
+export interface OpenCart {
+  lines: { key: string; name: string; price: number; qty: number; note: string; options: { name: string }[] }[];
+  discount: number;
+  note: string;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -93,6 +100,7 @@ export interface Dashboard {
   lowStockCount: number;
   pendingPurchases: number;
   openShifts: number;
+  openOrders: { count: number; total: number };
   serverTime: string;
 }
 
@@ -109,6 +117,7 @@ export const api = {
       'GET',
       `/activity${q({ limit: 50, before })}`,
     ),
+  openOrders: (c: Conn) => request<{ openOrders: OpenOrder<OpenCart>[] }>(c, 'GET', '/open-orders'),
   order: (c: Conn, id: string) => request<ApiOrder>(c, 'GET', `/orders/${encodeURIComponent(id)}`),
   inventory: (c: Conn) => request<{ items: InventoryItem[] }>(c, 'GET', '/inventory/items'),
   moves: (c: Conn, p: { itemId?: string; type?: string; limit?: number }) => request<{ moves: StockMove[] }>(c, 'GET', `/inventory/moves${q(p)}`),

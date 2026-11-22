@@ -69,8 +69,8 @@ export function Home({ go }: { go: (t: Tab) => void }) {
                 <span>đề xuất nhập chờ duyệt</span>
               </button>
               <button className="alert" onClick={() => go('activity')}>
-                <strong>{data.openShifts}</strong>
-                <span>ca đang mở</span>
+                <strong>{data.openOrders.count}</strong>
+                <span>bàn chưa thanh toán · {moneyShort(data.openOrders.total)}</span>
               </button>
             </div>
             {(t.refunds > 0 || t.voidedCount > 0 || t.discounts > 0) && (

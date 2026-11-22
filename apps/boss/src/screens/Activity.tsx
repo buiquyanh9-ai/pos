@@ -1,13 +1,119 @@
 import { useState } from 'react';
 import { ORDER_STATUS_LABEL, ORDER_TYPE_LABEL, PAYMENT_LABEL, money, type OrderType, type PaymentMethod } from '@shopflow/shared';
-import { api, type ApiOrder } from '../lib/api';
+import type { OpenOrder } from '@shopflow/shared';
+import { api, type ApiOrder, type OpenCart } from '../lib/api';
 import { dateTimeLocal, isoDateLocal, timeLocal } from '../lib/range';
 import { useRemote } from '../lib/store';
-import { Header, Loading, Sheet } from '../components/UI';
+import { Header, Loading, Segmented, Sheet } from '../components/UI';
 
 type Filter = 'all' | OrderType;
 
 export function Activity() {
+  const [view, setView] = useState<'paid' | 'open'>('paid');
+  const { data: openData } = useRemote(api.openOrders);
+  const openCount = openData?.openOrders.length ?? 0;
+  return view === 'open' ? (
+    <OpenBills bills={openData?.openOrders ?? null} onSwitch={() => setView('paid')} />
+  ) : (
+    <PaidOrders openCount={openCount} onSwitch={() => setView('open')} />
+  );
+}
+
+function ViewSwitch({ view, openCount, onSwitch }: { view: 'paid' | 'open'; openCount: number; onSwitch: () => void }) {
+  return (
+    <Segmented<'paid' | 'open'>
+      value={view}
+      onChange={(v) => v !== view && onSwitch()}
+      options={[
+        { id: 'paid', label: 'Đã thanh toán' },
+        { id: 'open', label: `Hoá đơn hiện tại${openCount ? ` (${openCount})` : ''}` },
+      ]}
+    />
+  );
+}
+
+/** Unpaid table bills right now in the shop ("Hoá đơn hiện tại"). */
+function OpenBills({ bills, onSwitch }: { bills: OpenOrder<OpenCart>[] | null; onSwitch: () => void }) {
+  const [filter, setFilter] = useState<Filter>('all');
+  const [open, setOpen] = useState<OpenOrder<OpenCart> | null>(null);
+  const list = (bills ?? []).filter((b) => filter === 'all' || b.orderType === filter);
+  const total = list.reduce((s, b) => s + b.total, 0);
+  return (
+    <div className="screen">
+      <Header title="Hoạt động" />
+      <div className="screen-body with-footer">
+        <ViewSwitch view="open" openCount={bills?.length ?? 0} onSwitch={onSwitch} />
+        <div className="chips scroll-x">
+          {(['all', 'dine_in', 'takeaway', 'delivery'] as Filter[]).map((f) => (
+            <button key={f} className={filter === f ? 'chip on' : 'chip'} onClick={() => setFilter(f)}>
+              {f === 'all' ? 'Tất cả' : ORDER_TYPE_LABEL[f]}
+            </button>
+          ))}
+        </div>
+        {!bills && <p className="empty">Đang tải…</p>}
+        <ul className="list card flush">
+          {list.map((b) => (
+            <li key={b.id}>
+              <button className="order-row" onClick={() => setOpen(b)}>
+                <span className={`dot type-${b.orderType}`} aria-hidden="true" />
+                <span className="grow">
+                  <strong>{b.tableName || ORDER_TYPE_LABEL[b.orderType as OrderType] || 'Đơn'}</strong>
+                  <span className="muted small">
+                    {b.itemCount} món · {b.cashierName ?? ''} · mở {timeLocal(b.createdAt)}
+                  </span>
+                </span>
+                <strong>{money(b.total)}</strong>
+                <span className="chev">›</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        {bills && !list.length && <p className="empty">Không có hoá đơn đang mở</p>}
+      </div>
+      <footer className="sum-footer">
+        <span>
+          Tổng <strong>{list.length} đơn</strong>
+        </span>
+        <span>
+          Tổng phải thu <strong>{money(total)}</strong>
+        </span>
+      </footer>
+      {open && (
+        <Sheet title={open.tableName || 'Hoá đơn đang mở'} onClose={() => setOpen(null)}>
+          <p className="muted">
+            {ORDER_TYPE_LABEL[open.orderType as OrderType] ?? open.orderType} · {open.cashierName ?? ''} · cập nhật {dateTimeLocal(open.updatedAt)}
+          </p>
+          <ul className="kv">
+            {open.cart.lines.map((l) => (
+              <li key={l.key}>
+                <span>
+                  {l.qty} × {l.name}
+                  {(l.options.length > 0 || l.note) && (
+                    <span className="muted small"> {[l.options.map((o) => o.name).join(', '), l.note].filter(Boolean).join(' · ')}</span>
+                  )}
+                </span>
+                <strong>{money(l.price * l.qty)}</strong>
+              </li>
+            ))}
+            {open.cart.discount > 0 && (
+              <li>
+                <span>Giảm giá</span>
+                <strong>−{money(open.cart.discount)}</strong>
+              </li>
+            )}
+            <li className="total">
+              <span>Phải thu</span>
+              <strong>{money(open.total)}</strong>
+            </li>
+          </ul>
+          {open.note && <p className="muted">Ghi chú: {open.note}</p>}
+        </Sheet>
+      )}
+    </div>
+  );
+}
+
+function PaidOrders({ openCount, onSwitch }: { openCount: number; onSwitch: () => void }) {
   const { data, error, loading } = useRemote((c) => api.activity(c));
   const [filter, setFilter] = useState<Filter>('all');
   const [open, setOpen] = useState<ApiOrder | null>(null);
@@ -28,6 +134,7 @@ export function Activity() {
     <div className="screen">
       <Header title="Hoạt động" />
       <div className="screen-body with-footer">
+        <ViewSwitch view="paid" openCount={openCount} onSwitch={onSwitch} />
         {data && data.openShifts.length > 0 && (
           <div className="shift-strip">
             {data.openShifts.map((s) => (

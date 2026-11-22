@@ -148,7 +148,7 @@ export async function call<T>(fn: (c: Conn) => Promise<T>): Promise<T> {
 // ---------------------------------------------------------------- live updates (SSE)
 let es: EventSource | null = null;
 let tickTimer: ReturnType<typeof setTimeout> | null = null;
-const EVENTS = ['order.created', 'order.updated', 'stock.changed', 'shift.updated', 'purchase.updated', 'catalog.changed', 'notification'];
+const EVENTS = ['order.created', 'order.updated', 'stock.changed', 'shift.updated', 'purchase.updated', 'catalog.changed', 'open_orders.changed', 'notification'];
 type Listener = (type: string, data: unknown) => void;
 const eventListeners = new Set<Listener>();
 export const onServerEvent = (l: Listener) => (eventListeners.add(l), () => void eventListeners.delete(l));
