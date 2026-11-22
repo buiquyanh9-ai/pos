@@ -1,62 +1,107 @@
-# Sync contract: POS ↔ Backend ↔ ShopFlow Boss
+# ShopFlow API v2: contract between POS, Boss and the backend
 
-All endpoints are under `/api`. Every endpoint except `/api/health` requires the `x-api-key` header when the server has `SHOPFLOW_API_KEY` set. Money is in **integer VND**, and timestamps are ISO-8601 UTC.
+All endpoints are under `/api`.
+- **Money** is in integer VND. **Stock quantities** are decimals with 3 decimal places (kg, l, …). **Timestamps** are ISO-8601 UTC.
+- Reports bucket by shop-local time; the `tz` parameter is an offset in minutes, default `420` (UTC+7).
 
-## Roles
+## Authentication & roles
 
-| Client | Writes | Reads |
-|---|---|---|
-| POS | `POST /orders`, `POST /orders/:id/void`, `POST /devices/heartbeat` | `GET /products`, `GET /reports/summary` |
-| ShopFlow Boss | `POST/PUT/DELETE /products` | `GET /sync/changes`, `GET /orders`, `GET /reports/summary`, `GET /devices` |
+- `POST /auth/login`:
+  - Boss sends `{ username, password }`; POS sends `{ username, pin }`.
+  - Response: `{ token, expiresAt, user }`. Sessions last 30 days, so a POS terminal stays logged in through offline periods.
+- Send `Authorization: Bearer <token>`. `GET /api/events` also accepts `?token=`, because EventSource cannot set headers.
+- `GET /auth/staff` is public and lists staff names for the POS PIN screen. It returns no secrets.
+- Optional `x-api-key: <SHOPFLOW_API_KEY>` acts as the owner, for integrations and scripts.
+
+| Role | Can do |
+|---|---|
+| `owner` | Everything. Store-wide reports, staff (`/users`), menu, approvals, audit log |
+| `cashier` | Sell, void/refund (reason required), open/close own shift, shift report (`/reports/summary?shiftId=`), stock counts |
+| `stock` | Inventory items, adjustments, stock counts, suppliers, purchase requests, receiving goods |
 
 ## Endpoints
 
-| Method & path | Purpose |
+### Auth & staff
+
+`POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · `GET /auth/staff`
+
+Owner only: `GET/POST/PUT /users` · `GET /audit`
+
+### Menu
+
+| Endpoint | Notes |
 |---|---|
-| `GET /health` | `{ ok, apiVersion, time, auth: disabled\|ok\|missing\|invalid }`. Public |
-| `GET /products?includeInactive=1&since=ISO` | Product list |
-| `POST /products` | Create product `{ sku?, barcode?, name, category?, price, stock?, active? }`. Returns 409 if the SKU already exists |
-| `PUT /products/:id` | Partial update |
-| `DELETE /products/:id` | Soft delete (`active=false`), so order history keeps its references |
-| `POST /orders` | Upload a sale (see below). **Idempotent by `id`**: a repeat returns 200 with `duplicate: true` |
-| `GET /orders?from&to&deviceId&limit` | Orders, newest first |
-| `POST /orders/:id/void` | Void an order and put its stock back |
-| `GET /reports/summary?from&to` | `{ orderCount, revenue, discount, byPayment[], topProducts[] }` for completed orders |
-| `GET /sync/changes?since=<cursor>&limit=200` | Change feed (see below) |
-| `POST /devices/heartbeat` | `{ id, name, kind: pos\|boss, appVersion }` |
-| `GET /devices` | Known devices and when each was last seen |
-| `POST /hardware/escpos` | Relay raw ESC/POS bytes to a LAN printer (used by the POS network printer driver) |
+| `GET /products` | `{ products, categories, optionGroups, serverTime }`. See *Product fields* below |
+| `POST/PUT/DELETE /products/:id` | Owner. `recipe: [{itemId, qty}]`, `optionGroupIds: [...]`. Delete is a soft delete |
+| `GET/POST/PUT /categories` | Owner for writes |
+| `GET/POST/PUT /option-groups` | Size / ice / sugar / topping. `options: [{name, priceDelta}]`, `multi`, `required` |
+| `GET/POST/PUT /tables` | Tables, with areas |
 
-### Order upload
+*Product fields:*
+- `stock` is the number of portions that can still be made from current inventory (BOM). `null` means stock is not tracked for this product.
+- `cost` is the unit cost: from the recipe, or the manual `cost` field.
 
-```json
-{
-  "id": "uuid generated on the POS",
-  "number": "3F9A-261122-007",
-  "deviceId": "pos-3f9a1c2b",
-  "cashier": "Lan",
-  "items": [{ "productId": "p-cf-den", "name": "Cà phê đen", "price": 20000, "qty": 2 }],
-  "discount": 0,
-  "paymentMethod": "cash",
-  "paid": 50000,
-  "createdAt": "2026-11-22T10:00:00.000Z"
-}
-```
+### Sales
 
-The server recomputes `subtotal`, `total` and `change` and validates:
+| Endpoint | Notes |
+|---|---|
+| `POST /orders` | Idempotent by `id` (see *Order upload*) |
+| `GET /orders?from&to&status&shiftId&orderType&cashierId&deviceId` | |
+| `POST /orders/:id/void` `{reason}` | Cancels a mistaken order. Stock goes back. Excluded from revenue |
+| `POST /orders/:id/refund` `{reason, restock?, shiftId?}` | Gives the money back. Stock returns only with `restock: true`, e.g. an unopened bottle |
+| `POST /shifts/open` `{deviceId, openingCash}` · `GET /shifts/current?deviceId` | One open shift per device |
+| `POST /shifts/:id/close` `{countedCash, note}` | Returns the shift report: `expectedCash`, `cashDifference`, summary, stock counts |
+| `GET /shifts?from&to` · `GET /shifts/:id/report` | |
 
-- `paid >= total`
-- only cash payments can have change
-- `discount <= subtotal`
+*Order upload (`POST /orders`):*
+- The server recomputes subtotal, total and change, and validates them.
+- Rules: `paid >= total`; only cash payments can have change; `discount <= subtotal`.
+- Payment methods: `cash | transfer | qr | card`. Order types: `dine_in | takeaway | delivery`.
+- Each item is `{productId, name, price (incl. options), qty, note?, options?}`.
 
-It then decrements stock. Stock may go negative, because an offline sale has already happened and must still be recorded. The POS treats 4xx responses other than 401, 408 and 429 as permanent and marks the order *rejected*. It retries all other failures.
+### Inventory & purchasing
 
-### Change feed (for Boss)
+| Endpoint | Notes |
+|---|---|
+| `GET /inventory/items?low=1&kind=` · `POST/PUT /inventory/items` | |
+| `POST /inventory/items/:id/adjust` `{delta \| qty, reason}` | |
+| `GET /inventory/moves?itemId&type&from&to` | Ledger. Types: `sale`, `void`, `refund`, `import`, `adjust`, `count` |
+| `POST /inventory/stocktakes` `{shiftId?, lines:[{itemId, counted, reason}]}` | A reason is required when the count differs. The stock difference is applied |
+| `GET /suppliers` · `POST/PUT /suppliers` | |
+| `GET /purchases/suggestions` | Items below minimum, topped up to 2× the minimum |
+| `POST /purchases` | Status `pending`, or `approved` straight away if the owner creates it |
+| `POST /purchases/:id/approve` · `/reject` | Owner |
+| `POST /purchases/:id/receive` `{lines:[{itemId, receivedQty?, unitCost?}]}` | Approved requests only. Stock is added and the unit cost updated |
 
-```
-GET /api/sync/changes?since=0&limit=200
--> { "changes": [{ "seq": 1, "entity": "product"|"order", "id": "...", "op": "upsert"|"delete", "at": "...", "data": { ...current snapshot } }],
-     "cursor": 200, "hasMore": true }
-```
+### Reports, live data, notifications
 
-Boss stores `cursor` and calls again with `since=cursor` until `hasMore` is false. After that it polls, or polls when its screen opens. `data` is the **current** state of the entity, not the state at the time of the change, so applying the changes in order is always safe: last write wins.
+| Endpoint | Notes |
+|---|---|
+| `GET /reports/summary?from&to[&compare=1&shiftId&cashierId&deviceId&tz]` | Any range up to the minute, max 400 days. Owner, or a cashier with `shiftId`. See *Summary fields* |
+| `GET /dashboard` | Today so far, compared with yesterday up to the same time. Also low-stock count, pending purchases, open shifts |
+| `GET /activity?before=` | Latest orders and open shifts, for the Boss live feed |
+| `GET /events` | SSE events: `order.created`, `order.updated`, `stock.changed`, `shift.updated`, `purchase.updated`, `catalog.changed`, `notification` |
+| `GET /notifications` · `POST /notifications/read {ids \| "all"}` | |
+| `GET/PUT /notifications/prefs` | Per-user on/off per notification type |
+| `POST /notifications/push-tokens {token, platform}` | FCM device token from the phone app |
+| `GET /sync/changes?since=<cursor>` | Cursor-based change feed of products and orders, for incremental sync |
+
+*Summary fields (`/reports/summary`):* `orderCount`, `itemsSold`, `grossSales`, `discounts`, `refunds`, `netRevenue`, `avgOrderValue`, `voidedCount`/`voidedAmount`, `costOfGoods`, `grossProfit`, `costCoverage`, `byHour[24]`, `byDay`, `byPayment`, `byOrderType`, `byCashier`, `byCategory`, `topProducts`, plus `previous`/`change` when `compare=1`.
+
+*Notification types:* `stock.low`, `stock.variance`, `shift.closed`, `day.summary`, `purchase.pending`, `purchase.decided`, `order.voided`, `order.refunded`.
+
+## Business rules
+
+- **No double stock deduction.** The order insert and the stock deduction happen in one `BEGIN IMMEDIATE` transaction, and the order id is checked again inside the lock. Two concurrent uploads of the same order produce one 201 and one 200 `duplicate: true` (covered by a test).
+- **Revenue:**
+  - Sales count at **sale time**.
+  - Refunds count at **refund time**, so they reduce the day or shift in which the money left the drawer.
+  - Voided orders are never revenue; they are reported separately.
+  - Net = sales total after discount − refunds.
+- **Profit:**
+  - Each order line stores its unit cost at sale time, taken from the recipe × ingredient cost or the product's manual cost.
+  - `grossProfit` = net − cost of goods.
+  - `costCoverage` < 1 means some sales have no known cost, and profit is an estimate over the covered part.
+- **Low-stock alert.** It fires only when an item **crosses** below its minimum, not on every later sale.
+- **Expected cash for a shift** = opening cash + cash sales in the shift − cash refunds made in the shift.
+- **Audit.** Logins, user changes, menu changes, voids/refunds, adjustments, counts and purchase decisions are written to `audit_log`.

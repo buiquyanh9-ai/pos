@@ -1,77 +1,108 @@
-# ShopFlow POS
+# ShopFlow
 
-ShopFlow POS is the point-of-sale app for counters. It works without any POS hardware and is designed to be wrapped as an Android APK for real POS terminals later.
+ShopFlow is a sales and inventory system for food & beverage shops. It has two independent apps that share one backend and one database:
+
+| App | Who uses it | Where it runs |
+|---|---|---|
+| **ShopFlow POS** (`apps/pos`) | Cashiers and stock staff | Browser on Windows; APK for Android POS terminals (Capacitor) |
+| **ShopFlow Boss** (`apps/boss`) | The shop owner | Phone (Android/iOS via Capacitor, or installable web app) |
+| **Backend** (`apps/server`) | Both apps | Any PC or server with Node.js 24 |
 
 ```
-apps/
-  server/   shared backend: Node 24 + Express + SQLite (node:sqlite), used by POS and ShopFlow Boss
-  pos/      POS app: React + Vite + TypeScript, Android wrapper via Capacitor (apps/pos/android)
-docs/
-  ANDROID.md   build, install (ADB) and test the APK on an Android POS device
-  SYNC.md      API contract for ShopFlow Boss <-> backend <-> POS
-  SUNMI.md     optional SUNMI printer integration path
+apps/server     Node 24 + Express + SQLite (node:sqlite) · auth & roles · orders · inventory (BOM) · shifts
+                · stocktakes · purchasing · reports · notifications · realtime (SSE)
+apps/pos        React + Vite + TS · touch POS · offline-first order queue · hardware drivers (printer, scanner, drawer)
+apps/boss       React + Vite + TS · owner dashboard · reports by exact time range · live activity · stock & approvals
+packages/shared Types and formatting shared by POS and Boss
+docs/           SYNC.md (API & business rules) · ANDROID.md (APK) · DEPLOY.md (production) · SUNMI.md · PLAN.md
 ```
 
-ShopFlow POS is a separate app from ShopFlow Boss Mobile. The two only share the backend API.
+## Quick start (Windows)
 
-## Requirements
-
-- Windows 10/11 (or macOS/Linux)
-- **Node.js 24+** (the server uses the built-in `node:sqlite` and runs `.ts` files directly)
-- For the APK only: JDK 21 and Android Studio / Android SDK (see [docs/ANDROID.md](docs/ANDROID.md))
-
-## Run on Windows (development)
+Requires **Node.js 24+**.
 
 ```powershell
+cd shopflow-pos
 npm install
-npm run dev
+npm run seed:demo -w apps/server   # optional: 14 days of SAMPLE sales so reports have data
+npm run dev                         # backend :4000, POS :5173, Boss :5174
 ```
 
-- POS: http://localhost:5173. It is touch-friendly and also works with a mouse.
-- Backend: http://localhost:4000. On first start it seeds 12 sample products into `apps/server/data/shopflow.db`.
-- The server prints its LAN addresses. Use one of those as the **Backend URL** under *Cài đặt* (Settings) when the POS runs on another device.
+- POS: http://localhost:5173. Log in by choosing a staff member and entering their PIN.
+- Boss: http://localhost:5174. Log in with the owner's username and password. It is laid out for a phone screen; use the browser's device toolbar on a PC.
+- On first start the backend creates **sample data**: the store "Cửa hàng mẫu", a café menu with recipes, inventory, tables and suppliers. Every sample record is marked "mẫu" (sample).
 
-Other commands:
+### Demo accounts (sample data only)
+
+| Role | Username | Password (Boss) | PIN (POS) |
+|---|---|---|---|
+| Owner (Chủ cửa hàng) | `chu` | `chu123456` | `9999` |
+| Cashier (Thu ngân) | `thungan` | `thungan123` | `1111` |
+| Stock staff (Nhân viên kho) | `kho` | `kho123456` | `2222` |
+
+For a real shop:
+1. Start the backend once with `SEED=0` and an empty database.
+2. Create the owner with `npm run create-owner -w apps/server -- <username> <password> [PIN]`.
+3. Add staff, menu and stock from the apps or the API.
+
+### Commands
 
 | Command | What it does |
 |---|---|
-| `npm test` | Server API tests (node:test) and POS unit tests (vitest) |
-| `npm run typecheck` | TypeScript check for both apps |
-| `npm run build` | Production build of the POS web app into `apps/pos/dist` |
-| `npm start -w apps/server` | Run the backend without file watching |
+| `npm run dev` | Backend, POS and Boss with hot reload |
+| `npm test` | Server API and business-flow tests, plus POS and Boss unit tests |
+| `npm run typecheck` | TypeScript check of all apps |
+| `npm run build` | Production builds of POS (`apps/pos/dist`) and Boss (`apps/boss/dist`) |
+| `npm start -w apps/server` | Backend without file watching |
+| `npm run seed:demo -w apps/server` | Add SAMPLE sales for the last 14 days (runs once per database) |
+| `npm run create-owner -w apps/server -- user pass [pin]` | Create or reset an owner account |
 
 ### Backend configuration (`apps/server/.env`, optional)
 
-| Variable | Default | Notes |
+| Variable | Default | Meaning |
 |---|---|---|
-| `PORT` | `4000` | |
-| `HOST` | `0.0.0.0` | Listens on the LAN so POS devices can connect |
-| `SHOPFLOW_API_KEY` | *(empty)* | When set, every request needs the `x-api-key` header. Enter the key in POS Settings |
-| `DB_PATH` | `./data/shopflow.db` | SQLite file |
-| `SEED` | `1` | Set to `0` to skip sample products |
+| `PORT` / `HOST` | `4000` / `0.0.0.0` | Listens on the LAN so POS terminals and phones can connect |
+| `DB_PATH` | `./data/shopflow.db` | SQLite file. Back it up daily, see `docs/DEPLOY.md` |
+| `SEED` | `1` | `0` turns off the sample data |
+| `SEED_DEMO_SALES` | `0` | `1` adds the 14 days of sample sales at startup |
+| `SHOPFLOW_API_KEY` | *(empty)* | Optional service key for integrations. A request with this key acts as the owner |
+| `TZ_OFFSET_MIN` | `420` | Shop time zone in minutes (UTC+7) |
+| `DAY_SUMMARY_HOUR` | `22` | Local hour at which the daily summary notification is sent |
+| `FCM_SERVICE_ACCOUNT` | *(empty)* | Path to a Firebase service-account JSON file. Turns on push to phones when the app is closed |
 
-If a POS device on the LAN cannot reach the backend, allow port 4000 in Windows Firewall (inbound, private network).
+## How the system works
 
-## How it works
+1. **Sale on the POS.** The cashier logs in with a PIN and opens a shift with the opening cash.
+   - An order is saved on the device first, then uploaded.
+   - Each order has an id generated on the device, so a retry never creates a duplicate.
+   - Selling continues while offline; the header shows how many orders are waiting to upload.
+2. **Backend.** In one transaction, the backend stores the order and deducts every ingredient according to the recipe (BOM), writing a stock ledger entry for each.
+   - Concurrent or repeated uploads of the same order deduct stock once.
+   - Totals are recomputed on the server.
+3. **Boss sees it live.** The backend pushes events over SSE (`/api/events`), so the dashboard, activity feed and reports refresh within about a second.
+4. **Alerts.** When an item drops below its minimum, a `stock.low` notification is created. It appears in Boss immediately, and on the phone as a push notification when FCM is configured.
+5. **End of shift.**
+   - Staff count stock. A difference requires a reason; it adjusts stock and notifies the owner.
+   - The cashier counts the cash. The shift report shows expected vs counted cash.
+6. **Purchasing.** The stock clerk creates a purchase request from the "below minimum" suggestions, and the owner approves or rejects it in Boss.
+7. **Receiving.** The stock clerk enters the quantities actually received. Stock and unit costs update, and both apps see the new levels.
 
-- **Offline-first sales.** A sale is saved on the device first. The sync loop then uploads it, every 15 s and whenever the connection comes back. Each order carries an id generated on the device, so a retried upload never creates a duplicate. The header pill shows connection status and how many orders are still waiting to upload.
-- **Catalog.** The product list is cached on the device, so the POS keeps selling while offline. Prices are taken at the time of sale.
-- **Server computes totals.** The server recomputes the subtotal, total and change and rejects inconsistent orders. A rejected order is flagged in *Đơn hàng* (Orders) and can be re-sent.
-- **ShopFlow Boss sync.** Boss manages the catalog through `/api/products` and reads sales through the cursor-based change feed `/api/sync/changes` and `/api/reports/summary`. See [docs/SYNC.md](docs/SYNC.md).
-- **Hardware is modular.** `apps/pos/src/hardware/types.ts` defines the printer, scanner and cash drawer interfaces. The available drivers are:
-  - mock: console only, the default
-  - browser print
-  - keyboard-wedge barcode scanner (USB/Bluetooth scanners that act as a keyboard)
-  - network ESC/POS printer and drawer, relayed by the backend to `ip:9100`
-  - SUNMI: optional, only shown when a SUNMI bridge is present
+Revenue rules (net, refunds, voids, profit) are in [docs/SYNC.md](docs/SYNC.md).
 
-  A failing device never blocks a sale. You can choose drivers and run a test print under *Cài đặt* (Settings).
-- **Screens.** The layout uses two columns in landscape (1024×600 and up) and a bottom-sheet cart in portrait (handhelds around 720×1440). Touch targets are at least 52 px.
+**Roles:**
+- Owner: everything, including store-wide reports, approvals and staff management.
+- Cashier: sell, void/refund with a reason, shifts, stock counts.
+- Stock staff: inventory, counts, purchase requests, receiving.
 
-## Roadmap
+## Android
 
-1. ✅ POS on Windows
-2. ✅ POS ↔ Backend ↔ Boss sync API (Boss app itself is a separate project)
-3. ✅ Android project prepared (`apps/pos/android`). Building the APK needs a JDK and the Android SDK
-4. ⏳ Test on a real Android POS terminal
-5. ⏳ Device-specific printer and scanner drivers (SUNMI native bridge, etc.)
+- POS and Boss each have a Capacitor Android project (`apps/pos/android`, `apps/boss/android`).
+- Building an APK needs Android Studio (JDK 21 + SDK). Step-by-step guide, ADB install and the real-terminal test checklist: [docs/ANDROID.md](docs/ANDROID.md).
+- Printer/SUNMI notes: [docs/SUNMI.md](docs/SUNMI.md).
+
+## Status
+
+See [docs/PLAN.md](docs/PLAN.md) for the plan and what has been tested. Not done yet:
+- APK built and tested on a physical terminal (no hardware or Android SDK in the dev environment).
+- FCM push tested with a real Firebase project.
+- PostgreSQL. The data layer is SQLite for now; see `docs/DEPLOY.md` for the migration path.

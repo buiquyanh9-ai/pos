@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ShopFlow Boss</string>
+    <string name="title_activity_main">ShopFlow Boss</string>
+    <string name="package_name">vn.shopflow.boss</string>
+    <string name="custom_url_scheme">vn.shopflow.boss</string>
+</resources>

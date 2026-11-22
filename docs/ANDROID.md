@@ -1,5 +1,7 @@
 # Android APK: build, install, test
 
+> This guide uses the POS app (`apps/pos`). The Boss app (`apps/boss`, id `vn.shopflow.boss`) builds the same way: replace `apps/pos` with `apps/boss` and `-w apps/pos` with `-w apps/boss`. Install Boss on the owner's phone instead of the POS terminal.
+
 The POS web app (`apps/pos`) runs inside a Capacitor WebView. The native project lives in `apps/pos/android`. The same frontend code runs in the browser on Windows and in the APK, with nothing duplicated.
 
 > You do not need a POS terminal to develop. Use the browser on Windows or an Android emulator. A physical device is only needed for the final hardware tests.
