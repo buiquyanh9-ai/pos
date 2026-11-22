@@ -9,7 +9,7 @@ import { Modal } from '../components/Modal';
 
 const SYNC_LABEL: Record<LocalOrder['sync'], string> = { pending: 'Chờ gửi', synced: 'Đã đồng bộ', rejected: 'Bị từ chối' };
 
-export function OrdersScreen() {
+export function OrdersScreen({ onEdit }: { onEdit?: (order: LocalOrder) => void } = {}) {
   const localOrders = usePos((s) => s.orders);
   const [serverOrders, setServerOrders] = useState<LocalOrder[] | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
@@ -110,6 +110,7 @@ export function OrdersScreen() {
           order={orders.find((o) => o.id === selected.id) ?? selected}
           onClose={() => setSelected(null)}
           onChanged={() => setReloadTick((n) => n + 1)}
+          onEdit={onEdit}
         />
       )}
     </div>
@@ -117,18 +118,26 @@ export function OrdersScreen() {
 }
 
 const VOID_REASONS = ['Nhập nhầm món', 'Khách huỷ trước khi làm', 'Trùng đơn', 'Sai phương thức thanh toán'];
+const EDIT_REASONS = ['Thêm món', 'Bớt món', 'Sai món', 'Sai bàn', 'Sai phương thức thanh toán'];
 const REFUND_REASONS = ['Món lỗi / không đạt', 'Khách đổi ý', 'Làm sai món', 'Giao hàng thất bại'];
 
-function OrderDetail({ order: o, onClose, onChanged }: { order: LocalOrder; onClose: () => void; onChanged: () => void }) {
-  const [action, setAction] = useState<'void' | 'refund' | null>(null);
+function OrderDetail({ order: o, onClose, onChanged, onEdit }: { order: LocalOrder; onClose: () => void; onChanged: () => void; onEdit?: (o: LocalOrder) => void }) {
+  const [action, setAction] = useState<'void' | 'refund' | 'edit' | null>(null);
   const [reason, setReason] = useState('');
   const [restock, setRestock] = useState(false);
   const [busy, setBusy] = useState(false);
   const run = async () => {
     setBusy(true);
     try {
-      if (action === 'void') await voidOrder(o.id, reason);
+      if (action === 'void' || action === 'edit') await voidOrder(o.id, action === 'edit' ? `Sửa đơn: ${reason}` : reason);
       else await refundOrder(o.id, reason, restock);
+      if (action === 'edit') {
+        setAction(null);
+        onChanged();
+        onClose();
+        onEdit?.(o);
+        return;
+      }
       notify(action === 'void' ? `Đã huỷ đơn ${o.number}` : `Đã hoàn ${money(o.total)} cho đơn ${o.number}`, 'success');
       setAction(null);
       onChanged();
@@ -189,9 +198,15 @@ function OrderDetail({ order: o, onClose, onChanged }: { order: LocalOrder; onCl
       )}
       {action && (
         <div className="reason-box">
-          <strong>{action === 'void' ? 'Huỷ đơn (nhập nhầm / chưa làm món): kho được hoàn lại' : `Hoàn tiền ${money(o.total)} cho khách`}</strong>
+          <strong>
+            {action === 'void'
+              ? 'Huỷ đơn (nhập nhầm / chưa làm món): kho được hoàn lại'
+              : action === 'edit'
+                ? 'Sửa đơn: đơn này sẽ được huỷ (kho hoàn lại) và nạp lại vào giỏ để chỉnh rồi thanh toán lại'
+                : `Hoàn tiền ${money(o.total)} cho khách`}
+          </strong>
           <div className="opt-row">
-            {(action === 'void' ? VOID_REASONS : REFUND_REASONS).map((r) => (
+            {(action === 'refund' ? REFUND_REASONS : action === 'edit' ? EDIT_REASONS : VOID_REASONS).map((r) => (
               <button key={r} className={reason === r ? 'opt on' : 'opt'} onClick={() => setReason(r)}>
                 {r}
               </button>
@@ -208,7 +223,7 @@ function OrderDetail({ order: o, onClose, onChanged }: { order: LocalOrder; onCl
               Thôi
             </button>
             <button className="btn danger" disabled={busy || !reason.trim()} onClick={() => void run()}>
-              {action === 'void' ? 'Xác nhận huỷ đơn' : 'Xác nhận hoàn tiền'}
+              {action === 'void' ? 'Xác nhận huỷ đơn' : action === 'edit' ? 'Huỷ & sửa lại đơn' : 'Xác nhận hoàn tiền'}
             </button>
           </div>
         </div>
@@ -224,6 +239,11 @@ function OrderDetail({ order: o, onClose, onChanged }: { order: LocalOrder; onCl
         )}
         {o.status === 'completed' && o.sync === 'synced' && !action && (
           <>
+            {onEdit && (
+              <button className="btn secondary" onClick={() => (setAction('edit'), setReason(''))}>
+                Sửa đơn
+              </button>
+            )}
             <button className="btn danger" onClick={() => (setAction('void'), setReason(''))}>
               Huỷ đơn
             </button>

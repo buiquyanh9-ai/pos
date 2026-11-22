@@ -14,6 +14,8 @@ interface Props {
   dispatch: Dispatch<CartAction>;
   query: string;
   setQuery: (value: string) => void;
+  /** Opens the "•••" launcher (Hoạt động, Báo cáo, Hàng tồn, ...). */
+  onMore: () => void;
 }
 
 const COLS = 5;
@@ -72,7 +74,7 @@ function ProductTile({ p, qty, onTap }: { p: Product; qty: number; onTap: () => 
   );
 }
 
-export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
+export function SaleScreen({ cart, dispatch, query, setQuery, onMore }: Props) {
   const products = usePos((s) => s.products);
   const categories = usePos((s) => s.categories);
   const tables = usePos((s) => s.tables);
@@ -155,6 +157,9 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
           {!products.length && <p className="empty pos-empty">Chưa có món. Kiểm tra kết nối máy chủ.</p>}
         </div>
         <nav className="pos-cats" role="tablist">
+          <button className="pos-cat more" aria-label="Menu: hoạt động, báo cáo, hàng tồn…" onClick={onMore}>
+            •••
+          </button>
           {catNames.map((c) => (
             <button key={c} role="tab" aria-selected={!searching && c === activeCat} className={!searching && c === activeCat ? 'pos-cat active' : 'pos-cat'} onClick={() => (setCategory(c), setQuery(''))}>
               {c}

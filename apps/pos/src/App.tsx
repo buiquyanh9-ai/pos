@@ -6,52 +6,53 @@ import { LoginScreen } from './screens/LoginScreen';
 import { ShiftScreen } from './screens/ShiftScreen';
 import { StockScreen } from './screens/StockScreen';
 import { AdminScreen } from './screens/AdminScreen';
+import { ReportsScreen } from './screens/ReportsScreen';
 import { Toasts } from './components/Toasts';
-import { cartReducer, emptyCart } from './lib/cart';
+import { ICON, MoreMenu, type MoreItem } from './components/MoreMenu';
+import { cartReducer, emptyCart, type Cart } from './lib/cart';
 import { CONNECTION_LABEL, getState, logout, pendingCount, syncNow, usePos } from './lib/store';
 import { getScanner } from './hardware';
 import { notify } from './lib/notify';
-import { ROLE_LABEL, type Role } from './lib/types';
+import type { LocalOrder, Role } from './lib/types';
 
-type Tab = 'sale' | 'orders' | 'shift' | 'stock' | 'admin' | 'settings';
-type IconName = 'cart' | 'orders' | 'shift' | 'stock' | 'admin' | 'settings' | 'search';
+type Tab = 'sale' | 'orders' | 'reports' | 'stock' | 'shift' | 'admin' | 'settings';
 
-const ICONS: Record<IconName, string> = {
-  cart: 'M3 4h2l2 11h10l2-8H6M9 20a1 1 0 1 0 0 0M17 20a1 1 0 1 0 0 0',
-  orders: 'M5 4h14v16H5zM8 8h8M8 12h8M8 16h5',
-  shift: 'M12 7v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z',
-  stock: 'M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8',
-  admin: 'M4 6h16M4 12h16M4 18h10M18 16l2 2 3-4',
-  settings: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0-5v2m0 14v2M4.2 4.2l1.4 1.4m12.8 12.8 1.4 1.4M3 12h2m14 0h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4',
-  search: 'm21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
-};
-
-function Icon({ name }: { name: IconName }) {
-  return (
-    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path d={ICONS[name]} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-const NAV: { id: Tab; label: string; icon: IconName; roles: Role[] }[] = [
-  { id: 'sale', label: 'Bán hàng', icon: 'cart', roles: ['owner', 'cashier'] },
-  { id: 'orders', label: 'Đơn hàng', icon: 'orders', roles: ['owner', 'cashier'] },
-  { id: 'shift', label: 'Ca', icon: 'shift', roles: ['owner', 'cashier'] },
-  { id: 'stock', label: 'Kho', icon: 'stock', roles: ['owner', 'cashier', 'stock'] },
-  { id: 'admin', label: 'Quản lý', icon: 'admin', roles: ['owner'] },
-  { id: 'settings', label: 'Cài đặt', icon: 'settings', roles: ['owner', 'cashier', 'stock'] },
+// The "•••" launcher (classic F&B POS): every page except selling opens from here.
+const MENU: (MoreItem & { id: Tab | 'logout'; roles: Role[]; title: string })[] = [
+  { id: 'orders', label: 'Hoạt động', title: 'Hoạt động: đơn hàng gần đây', icon: ICON.activity, color: '#22c55e', roles: ['owner', 'cashier'] },
+  { id: 'reports', label: 'Báo cáo', title: 'Báo cáo doanh thu', icon: ICON.report, color: '#3b82f6', roles: ['owner', 'cashier'] },
+  { id: 'stock', label: 'Hàng tồn', title: 'Hàng tồn', icon: ICON.stock, color: '#ef4444', roles: ['owner', 'cashier', 'stock'] },
+  { id: 'admin', label: 'Nhân viên & thực đơn', title: 'Quản lý', icon: ICON.staff, color: '#a855f7', roles: ['owner'] },
+  { id: 'shift', label: 'Két tiền', title: 'Két tiền (ca làm việc)', icon: ICON.cash, color: '#0ea5e9', roles: ['owner', 'cashier'] },
+  { id: 'settings', label: 'Cài đặt', title: 'Cài đặt', icon: ICON.settings, color: '#6366f1', roles: ['owner', 'cashier', 'stock'] },
+  { id: 'logout', label: 'Đăng xuất', title: '', icon: ICON.logout, color: '#64748b', roles: ['owner', 'cashier', 'stock'] },
 ];
+
+/** Turn a paid order back into an editable cart ("Sửa đơn"). Options become part of the note. */
+function orderToCart(o: LocalOrder): Cart {
+  return {
+    lines: o.items.map((i, k) => {
+      const note = [i.options, i.note].filter(Boolean).join(' · ');
+      return { key: `${i.productId ?? `x${k}`}::${note}`, productId: i.productId ?? `x${k}`, name: i.name, price: i.price, qty: i.qty, note, options: [] };
+    }),
+    discount: o.discount,
+    orderType: o.orderType,
+    tableName: o.tableName,
+    note: o.note,
+  };
+}
 
 export function App() {
   const session = usePos((s) => s.session);
   const shift = usePos((s) => s.shift);
   const role = session?.user.role;
+  const canSell = role === 'owner' || role === 'cashier';
   const [tab, setTab] = useState<Tab>('sale');
+  const [more, setMore] = useState(false);
   const [serverSettings, setServerSettings] = useState(() => !getState().settings.backendUrl);
   const [query, setQuery] = useState('');
   const [clock, setClock] = useState(() => new Date());
-  // Cart lives here so it survives switching tabs.
+  // Cart lives here so it survives switching pages.
   const [cart, dispatch] = useReducer(cartReducer, emptyCart);
   const connection = usePos((s) => s.connection);
   const pending = usePos(pendingCount);
@@ -59,14 +60,13 @@ export function App() {
   const hardware = usePos((s) => s.settings.hardware);
   const storeName = usePos((s) => s.settings.storeName);
   useEffect(() => {
-    const timer = window.setInterval(() => setClock(new Date()), 1000);
+    const timer = window.setInterval(() => setClock(new Date()), 15_000);
     return () => window.clearInterval(timer);
   }, []);
 
-  const nav = NAV.filter((n) => role && n.roles.includes(role));
-  // Land on the first page this role may use (stock staff go straight to Kho).
+  // Stock staff do not sell: their home page is Hàng tồn.
   useEffect(() => {
-    if (role && !nav.some((n) => n.id === tab)) setTab(nav[0].id);
+    if (role && !canSell && (tab === 'sale' || !MENU.some((m) => m.id === tab && m.roles.includes(role)))) setTab('stock');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
@@ -106,65 +106,90 @@ export function App() {
     );
   }
 
-  // Selling needs an open shift; the shift screen doubles as the "open shift" gate.
+  const items = MENU.filter((m) => role && m.roles.includes(role));
+  const pick = (id: string) => {
+    setMore(false);
+    if (id === 'logout') return void logout();
+    setTab(id as Tab);
+  };
   const needsShift = tab === 'sale' && !shift;
+  const page = MENU.find((m) => m.id === tab);
+
+  const status = (
+    <>
+      <span className="clock">{clock.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
+      <button className={`conn conn-${connection}`} onClick={() => void syncNow()} title="Đồng bộ ngay">
+        <span className="dot" />
+        <span className="conn-label">{syncing ? 'Đang đồng bộ…' : CONNECTION_LABEL[connection]}</span>
+        {pending > 0 && <span className="badge">{pending} chờ gửi</span>}
+      </button>
+    </>
+  );
 
   return (
-    <div className={tab === 'sale' && !needsShift ? 'app sale-mode' : 'app'}>
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">S</span>
-          <span>ShopFlow</span>
-        </div>
-        <nav className="side-nav" role="tablist">
-          {nav.map((n) => (
-            <button key={n.id} role="tab" aria-selected={tab === n.id} className={tab === n.id ? 'side-link active' : 'side-link'} onClick={() => setTab(n.id)}>
-              <Icon name={n.icon} />
-              <span>{n.label}</span>
-            </button>
-          ))}
-        </nav>
-        <button className="sidebar-footer" onClick={() => void logout()} title="Đăng xuất">
-          <span className="user-avatar">{session.user.name.slice(0, 1)}</span>
-          <span>
-            <strong>{session.user.name}</strong>
-            <small>{shift ? 'Ca đang mở' : ROLE_LABEL[session.user.role]} · Đăng xuất</small>
-          </span>
-        </button>
-      </aside>
+    <div className="app no-sidebar">
       <section className="app-main">
-        <header className="topbar">
-          <div className="topbar-store">
-            <strong>{storeName || 'ShopFlow Store'}</strong>
-            <span>
-              {session.user.name}
-              {shift ? ` · ca từ ${new Date(shift.openedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ' · chưa mở ca'}
-            </span>
-          </div>
-          {tab === 'sale' && !needsShift ? (
-            <label className="global-search">
-              <Icon name="search" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm món, mã SKU hoặc mã vạch..." />
-            </label>
-          ) : (
-            <div />
-          )}
-          <div className="topbar-right">
-            <span className="clock">{clock.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
-            <button className={`conn conn-${connection}`} onClick={() => void syncNow()} title="Đồng bộ ngay">
-              <span className="dot" />
-              <span className="conn-label">{syncing ? 'Đang đồng bộ…' : CONNECTION_LABEL[connection]}</span>
-              {pending > 0 && <span className="badge">{pending} chờ gửi</span>}
-            </button>
-          </div>
-        </header>
+        {tab === 'sale' ? (
+          <header className="strip">
+            <div className="strip-who">
+              <strong>{storeName || 'ShopFlow'}</strong>
+              <span>
+                {session.user.name}
+                {shift ? ` · ca từ ${new Date(shift.openedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ' · chưa mở ca'}
+              </span>
+            </div>
+            {!needsShift && (
+              <label className="strip-search">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm món…" />
+              </label>
+            )}
+            <div className="strip-right">
+              {status}
+              {/* Before a shift is open the bottom bar is not shown: keep the launcher reachable (reports, stock…). */}
+              {needsShift && (
+                <button className="strip-more" aria-label="Menu" onClick={() => setMore(true)}>
+                  •••
+                </button>
+              )}
+            </div>
+          </header>
+        ) : (
+          <header className="strip page">
+            {canSell ? (
+              <button className="strip-back" onClick={() => setTab('sale')}>
+                ‹ Bán hàng
+              </button>
+            ) : (
+              <span />
+            )}
+            <h1>{page?.title}</h1>
+            <div className="strip-right">
+              {status}
+              <button className="strip-more" aria-label="Menu" onClick={() => setMore(true)}>
+                •••
+              </button>
+            </div>
+          </header>
+        )}
         <main className="content">
           {needsShift ? (
             <ShiftScreen onOpened={() => setTab('sale')} />
           ) : (
             <>
-              {tab === 'sale' && <SaleScreen cart={cart} dispatch={dispatch} query={query} setQuery={setQuery} />}
-              {tab === 'orders' && <OrdersScreen />}
+              {tab === 'sale' && <SaleScreen cart={cart} dispatch={dispatch} query={query} setQuery={setQuery} onMore={() => setMore(true)} />}
+              {tab === 'orders' && (
+                <OrdersScreen
+                  onEdit={(o) => {
+                    dispatch({ type: 'load', cart: orderToCart(o) });
+                    setTab('sale');
+                    notify(`Đơn ${o.number} đã huỷ để sửa: chỉnh món rồi thanh toán lại`, 'success');
+                  }}
+                />
+              )}
+              {tab === 'reports' && <ReportsScreen />}
               {tab === 'shift' && <ShiftScreen />}
               {tab === 'stock' && <StockScreen />}
               {tab === 'admin' && <AdminScreen />}
@@ -172,6 +197,7 @@ export function App() {
             </>
           )}
         </main>
+        {more && <MoreMenu items={items} onPick={pick} onClose={() => setMore(false)} />}
         <Toasts />
       </section>
     </div>
