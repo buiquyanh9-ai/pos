@@ -87,6 +87,6 @@ Boss, checked in a real browser:
 - APK build. The dev machine has no JDK or Android SDK; the Capacitor projects for both apps are ready.
 - FCM push to a closed app. The sender is implemented but not tested; the Boss client still needs `@capacitor/push-notifications` (see `docs/DEPLOY.md`).
 - PostgreSQL and FastAPI. SQLite and Node were chosen at the start of the project; `docs/DEPLOY.md` describes the migration path.
-- Merging or splitting bills, and moving a bill to another table.
+- Merging or splitting bills. Moving a bill to another table works: open the bill, pick a free table, then press "Cập nhật đơn".
 - Multi-store support.
 - Delivery-app integrations, which CLAUDE.md excludes from v1 anyway.

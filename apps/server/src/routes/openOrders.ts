@@ -55,12 +55,13 @@ export function openOrderRoutes(db: DB) {
       if (cur && version !== undefined && Number(cur.version) !== version) {
         throw new HttpError(409, 'Đơn này vừa được sửa trên máy khác, hãy tải lại');
       }
-      if (!cur) {
-        // One open bill per table.
-        const clash = fields.tableName && fields.orderType === 'dine_in'
-          ? db.prepare("SELECT id FROM open_orders WHERE table_name = ? AND order_type = 'dine_in'").get(fields.tableName)
+      // One open bill per table (also when a bill is moved to another table).
+      const clash =
+        fields.tableName && fields.orderType === 'dine_in'
+          ? db.prepare("SELECT id FROM open_orders WHERE table_name = ? AND order_type = 'dine_in' AND id <> ?").get(fields.tableName, id)
           : undefined;
-        if (clash) throw new HttpError(409, `${fields.tableName} đang có đơn mở`);
+      if (clash) throw new HttpError(409, `${fields.tableName} đang có đơn mở`);
+      if (!cur) {
         db.prepare(
           `INSERT INTO open_orders (id, device_id, table_name, order_type, note, item_count, total, cart, cashier_id, version, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,

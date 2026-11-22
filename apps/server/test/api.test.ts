@@ -368,6 +368,11 @@ test('open orders: one per table, optimistic locking, visible on dashboard, dele
   const d = await call('GET', '/dashboard');
   assert.equal(d.body.openOrders.total, 60000);
   assert.equal((await call('GET', '/open-orders')).body.openOrders[0].cart.lines[0].qty, 2);
+  // Move the bill to another table; moving onto an occupied table is refused.
+  await call('PUT', '/open-orders/oo-9', { deviceId: 'pos-1', tableName: 'Bàn 4', cart, total: 1 }, 'cashier');
+  assert.equal((await call('PUT', '/open-orders/oo-1', { deviceId: 'pos-1', tableName: 'Bàn 4', cart, total: 1, version: 2 }, 'cashier')).status, 409);
+  assert.equal((await call('PUT', '/open-orders/oo-1', { deviceId: 'pos-1', tableName: 'Bàn 5', cart, total: 60000, version: 2 }, 'cashier')).body.tableName, 'Bàn 5');
+  await call('DELETE', '/open-orders/oo-9', {}, 'cashier');
   assert.equal((await call('DELETE', '/open-orders/oo-1', {}, 'cashier')).status, 204);
   assert.equal((await call('GET', '/open-orders')).body.openOrders.length, 0);
 });
