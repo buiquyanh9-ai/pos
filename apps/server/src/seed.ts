@@ -126,7 +126,8 @@ export function seedDemoSales(db: DB, days = 14, seed = 42) {
   const weighted = products.flatMap((p, i) => Array(weights[i]).fill(p) as (typeof p)[]);
   const hourWeights = [0, 0, 0, 0, 0, 0, 2, 6, 9, 7, 5, 6, 8, 6, 4, 4, 5, 6, 7, 6, 4, 2, 0, 0];
   const hours = hourWeights.flatMap((w, h) => Array(w).fill(h) as number[]);
-  const cashierId = 'u-thungan';
+  // Two shifts: Kim in the morning, Minh from 14:00.
+  const cashierOf = (hour: number) => (hour < 14 ? { id: 'u-thungan', name: 'Kim' } : { id: 'u-kho', name: 'Minh' });
   let count = 0;
   tx(db, () => {
     for (let d = days; d >= 1; d--) {
@@ -154,18 +155,19 @@ export function seedDemoSales(db: DB, days = 14, seed = 42) {
         const id = randomUUID();
         const createdAt = new Date(t).toISOString();
         const type = pick(['dine_in', 'dine_in', 'takeaway', 'takeaway', 'delivery'] as const);
+        const cashier = cashierOf(hour);
         const costs = items.map((l) => productUnitCost(db, l.p.id) ?? 0);
         db.prepare(
           `INSERT INTO orders (id, number, device_id, cashier_id, cashier, order_type, table_name, note, subtotal, discount, total, payment_method, paid, change_due, status, cost_total, created_at, received_at)
-           VALUES (?, ?, 'demo-seed', ?, 'Kim', ?, ?, '[MẪU]', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`,
-        ).run(id, `MAU-${String(++count).padStart(5, '0')}`, cashierId, type, type === 'dine_in' ? `Bàn ${1 + Math.floor(rand() * 8)}` : '', subtotal, discount, total, method, paid, paid - total,
+           VALUES (?, ?, 'demo-seed', ?, ?, ?, ?, '[MẪU]', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`,
+        ).run(id, `MAU-${String(++count).padStart(5, '0')}`, cashier.id, cashier.name, type, type === 'dine_in' ? `Bàn ${1 + Math.floor(rand() * 8)}` : '', subtotal, discount, total, method, paid, paid - total,
           items.reduce((a, l, i) => a + costs[i] * l.qty, 0), createdAt, createdAt);
         items.forEach((l, i) =>
           db.prepare('INSERT INTO order_items (order_id, product_id, name, category, price, qty, line_total, unit_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
             id, l.p.id, l.p.name, l.p.cat, l.p.price, l.qty, l.p.price * l.qty, costs[i],
           ),
         );
-        applyOrderStock(db, id, items.map((l) => ({ productId: l.p.id, qty: l.qty })), -1, { type: 'sale', userId: cashierId });
+        applyOrderStock(db, id, items.map((l) => ({ productId: l.p.id, qty: l.qty })), -1, { type: 'sale', userId: cashier.id });
         // ~1% refunded the same day
         if (rand() < 0.01) {
           db.prepare("UPDATE orders SET status = 'refunded', refund_amount = total, status_reason = 'Khách đổi ý (mẫu)', status_at = ? WHERE id = ?").run(

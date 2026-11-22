@@ -129,7 +129,7 @@ export function OrdersScreen({ onEdit }: { onEdit?: (order: LocalOrder) => void 
                 <th>Số đơn</th>
                 <th>Bàn / loại</th>
                 <th>Món</th>
-                <th>Thu ngân</th>
+                <th>Người thực hiện</th>
                 <th>Thanh toán</th>
                 <th>Trạng thái</th>
                 <th className="num">Tổng</th>
