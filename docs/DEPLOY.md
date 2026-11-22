@@ -32,16 +32,15 @@ Use this when the owner only checks Boss on the shop Wi-Fi, or through a VPN or 
 The database is a single SQLite file in WAL mode. The built-in command makes a consistent copy while the server keeps running (`VACUUM INTO`), and keeps the last 30 copies (`BACKUP_KEEP`):
 
 ```powershell
-npm run backup -w apps/server -- E:ackup\shopflow
+npm run backup -w apps/server -- D:\ShopFlowBackup
 ```
 
-Run it daily with Windows Task Scheduler: action `npm.cmd`, arguments `run backup -w apps/server -- E:ackup\shopflow`, start in the repo folder. Alternatively, with the sqlite3 CLI:
+Run it daily with Windows Task Scheduler:
+- Action: `npm.cmd`
+- Arguments: `run backup -w apps/server -- D:\ShopFlowBackup`
+- Start in: the repo folder
 
-```powershell
-sqlite3 D:\shopflow\shopflow.db ".backup 'E:\backup\shopflow-%DATE:~-4%%DATE:~3,2%%DATE:~0,2%.db'"
-```
-
-You can also stop the service and copy `shopflow.db`, `shopflow.db-wal` and `shopflow.db-shm` together. Keep copies off-site, and test a restore regularly.
+You can also stop the service and copy `shopflow.db`, `shopflow.db-wal` and `shopflow.db-shm` together. Keep copies off-site, and test a restore regularly: copy a backup file to `DB_PATH` while the server is stopped.
 
 ## Push notifications to phones (FCM)
 
@@ -53,6 +52,14 @@ Without FCM, Boss still gets alerts instantly while it is open or in the backgro
 4. Restart the backend. The log should show `Push (FCM): enabled`.
 
 The server-side sender is implemented (FCM HTTP v1 with a signed JWT), but it has **not been tested against a real Firebase project yet**.
+
+## Security checklist
+
+- Change all demo accounts, or start with `SEED=0`.
+- Owner password: at least 10 characters.
+- Use HTTPS when the backend is reachable from the Internet.
+- Login is locked for 5 minutes after 5 wrong PINs or passwords.
+- Every void, refund, cancelled bill, stock adjustment and purchase decision is in the audit log (`GET /api/audit`).
 
 ## Moving to PostgreSQL later
 
