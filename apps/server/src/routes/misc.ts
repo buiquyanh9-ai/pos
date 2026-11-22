@@ -58,11 +58,23 @@ export function miscRoutes(db: DB) {
     const startLocal = Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate());
     const from = new Date(startLocal - tz * 60_000).toISOString();
     const to = new Date(startLocal - tz * 60_000 + 86400_000).toISOString();
-    const today = summarizeWithCompare(db, { from, to, tzOffsetMin: tz });
+    // Compare "today so far" with yesterday up to the same time of day, not with all of yesterday.
+    const nowIso = new Date().toISOString();
+    const today = summarize(db, { from, to, tzOffsetMin: tz });
+    const yFrom = new Date(new Date(from).getTime() - 86400_000).toISOString();
+    const yTo = new Date(Date.now() - 86400_000).toISOString();
+    const yest = summarize(db, { from: yFrom, to: yTo, tzOffsetMin: tz });
+    const pct = (a: number, b: number) => (b === 0 ? null : Math.round(((a - b) / b) * 1000) / 10);
+    const todayWithCompare = {
+      ...today,
+      previous: { from: yFrom, to: yTo, netRevenue: yest.netRevenue, orderCount: yest.orderCount, itemsSold: yest.itemsSold },
+      change: { netRevenue: pct(today.netRevenue, yest.netRevenue), orderCount: pct(today.orderCount, yest.orderCount), itemsSold: pct(today.itemsSold, yest.itemsSold) },
+      asOf: nowIso,
+    };
     const low = db.prepare('SELECT COUNT(*) AS n FROM inventory_items WHERE active = 1 AND qty < min_qty').get()!;
     const pending = db.prepare("SELECT COUNT(*) AS n FROM purchase_requests WHERE status = 'pending'").get()!;
     const openShifts = db.prepare("SELECT COUNT(*) AS n FROM shifts WHERE status = 'open'").get()!;
-    res.json({ today, lowStockCount: Number(low.n), pendingPurchases: Number(pending.n), openShifts: Number(openShifts.n), serverTime: now() });
+    res.json({ today: todayWithCompare, lowStockCount: Number(low.n), pendingPurchases: Number(pending.n), openShifts: Number(openShifts.n), serverTime: now() });
   });
 
   // ---------------------------------------------------------------- notifications

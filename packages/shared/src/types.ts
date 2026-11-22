@@ -249,6 +249,8 @@ export interface Summary {
   voidedCount: number;
   voidedAmount: number;
   hasCostData: boolean;
+  /** Share of sales (0..1) with a known cost; profit is an estimate when < 1. */
+  costCoverage: number;
   costOfGoods: number | null;
   grossProfit: number | null;
   byHour: (Bucket & { hour: number })[];

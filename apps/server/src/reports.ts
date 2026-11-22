@@ -56,6 +56,7 @@ export function summarize(db: DB, q: ReportQuery) {
   let itemsSold = 0;
   let cogs = 0;
   let hasCostData = true;
+  let costedSales = 0; // sales total of orders whose cost is known
   const byHour: Bucket[] = Array.from({ length: 24 }, () => ({ revenue: 0, orders: 0 }));
   const byDay = new Map<string, Bucket>();
   const byPayment = new Map<string, Bucket>();
@@ -77,7 +78,10 @@ export function summarize(db: DB, q: ReportQuery) {
     discounts += Number(o.discount);
     salesTotal += total;
     if (o.cost_total === null || o.cost_total === undefined) hasCostData = false;
-    else cogs += Number(o.cost_total);
+    else {
+      cogs += Number(o.cost_total);
+      costedSales += total;
+    }
     const local = localDate(o.created_at as string, tz);
     byHour[local.getUTCHours()].revenue += total;
     byHour[local.getUTCHours()].orders += 1;
@@ -142,8 +146,10 @@ export function summarize(db: DB, q: ReportQuery) {
     voidedCount: Number(voided.n),
     voidedAmount: Number(voided.amount),
     hasCostData: hasCostData && orderCount > 0,
-    costOfGoods: hasCostData ? cogsNet : null,
-    grossProfit: hasCostData ? net - cogsNet : null,
+    /** Share of sales (0..1) whose cost is known. Profit below 1 is an estimate over that share. */
+    costCoverage: salesTotal > 0 ? Math.round((costedSales / salesTotal) * 1000) / 1000 : 0,
+    costOfGoods: costedSales > 0 ? cogsNet : null,
+    grossProfit: costedSales > 0 ? (hasCostData ? net - cogsNet : costedSales - cogs) : null,
     byHour: byHour.map((b, hour) => ({ hour, ...b })),
     byDay: [...byDay].sort(([a], [b]) => a.localeCompare(b)).map(([date, b]) => ({ date, ...b })),
     byPayment: [...byPayment].map(([method, b]) => ({ method, ...b })).sort(sortDesc),

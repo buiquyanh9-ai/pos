@@ -92,6 +92,12 @@ export function Reports() {
                   <span>Lợi nhuận gộp</span>
                   <strong>{s.grossProfit === null ? 'Thiếu dữ liệu giá vốn' : money(s.grossProfit)}</strong>
                 </li>
+                {s.grossProfit !== null && s.costCoverage < 1 && (
+                  <li className="muted small">
+                    <span>Lợi nhuận ước tính trên {Math.round(s.costCoverage * 100)}% doanh thu có giá vốn</span>
+                    <span />
+                  </li>
+                )}
                 <li className="muted">
                   <span>Đơn đã huỷ (không tính doanh thu)</span>
                   <span>

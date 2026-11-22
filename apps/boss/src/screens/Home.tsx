@@ -27,7 +27,9 @@ export function Home({ go }: { go: (t: Tab) => void }) {
       />
       <div className="screen-body">
         <p className="greeting">
-          Xin chào, <strong>{user?.name}</strong>
+          <span>
+            Xin chào, <strong>{user?.name}</strong>
+          </span>
           <span className={`live live-${live}`}>{live === 'on' ? '● Trực tiếp' : live === 'connecting' ? '○ Đang kết nối' : '○ Ngoại tuyến'}</span>
         </p>
         <Loading error={error} loading={loading && !data} />
@@ -37,14 +39,18 @@ export function Home({ go }: { go: (t: Tab) => void }) {
               <span className="muted">Doanh thu thuần hôm nay</span>
               <strong>{money(t.netRevenue)}</strong>
               <span className={`delta ${t.change.netRevenue === null ? '' : t.change.netRevenue >= 0 ? 'up' : 'down'}`}>
-                {t.change.netRevenue === null ? 'Chưa có dữ liệu hôm qua' : `${t.change.netRevenue >= 0 ? '▲' : '▼'} ${Math.abs(t.change.netRevenue)}% so với hôm qua (${moneyShort(t.previous.netRevenue)})`}
+                {t.change.netRevenue === null ? 'Chưa có dữ liệu hôm qua' : `${t.change.netRevenue >= 0 ? '▲' : '▼'} ${Math.abs(t.change.netRevenue)}% so với cùng giờ hôm qua (${moneyShort(t.previous.netRevenue)})`}
               </span>
             </section>
             <div className="stats">
               <Stat label="Số đơn" value={String(t.orderCount)} change={t.change.orderCount} />
               <Stat label="Món đã bán" value={String(t.itemsSold)} change={t.change.itemsSold} />
               <Stat label="TB / đơn" value={moneyShort(t.avgOrderValue)} />
-              <Stat label="Lợi nhuận gộp" value={t.grossProfit === null ? '—' : moneyShort(t.grossProfit)} hint={t.grossProfit === null ? 'thiếu giá vốn' : undefined} />
+              <Stat
+                label="Lợi nhuận gộp"
+                value={t.grossProfit === null ? '—' : moneyShort(t.grossProfit)}
+                hint={t.grossProfit === null ? 'chưa có giá vốn' : t.costCoverage < 1 ? `ước tính trên ${Math.round(t.costCoverage * 100)}% doanh thu` : undefined}
+              />
             </div>
             <Card title="Doanh thu theo giờ">
               <BarChart
