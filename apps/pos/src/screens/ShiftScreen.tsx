@@ -219,6 +219,8 @@ function CashMoves({ shiftId, moves, onAdded }: { shiftId: string; moves: CashMo
 }
 
 function CloseShift({ expected, onClosed }: { expected: number; onClosed: (r: ShiftReport) => void }) {
+  const openBills = usePos((s) => s.openOrders);
+  const [confirmOpenBills, setConfirmOpenBills] = useState(false);
   const [counts, setCounts] = useState<Record<number, number>>({});
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -274,6 +276,12 @@ function CloseShift({ expected, onClosed }: { expected: number; onClosed: (r: Sh
         </div>
       </div>
       <input className="opt-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={diff ? 'Ghi chú lý do lệch tiền (nên ghi)' : 'Ghi chú (không bắt buộc)'} />
+      {openBills.length > 0 && (
+        <p className={confirmOpenBills ? 'error-text strong' : 'error-text'}>
+          Còn {openBills.length} hoá đơn chưa thanh toán ({openBills.map((b) => b.tableName || 'mang đi').join(', ')}).
+          {confirmOpenBills ? ' Bấm “Đóng ca” lần nữa nếu vẫn muốn đóng (hoá đơn được giữ cho ca sau).' : ' Nên thanh toán hoặc huỷ trước khi đóng ca.'}
+        </p>
+      )}
       <div className="cart-actions">
         <button className="btn secondary" onClick={() => void logout()}>
           Đăng xuất (giữ ca)
@@ -282,6 +290,10 @@ function CloseShift({ expected, onClosed }: { expected: number; onClosed: (r: Sh
           className="btn primary big"
           disabled={busy}
           onClick={async () => {
+            if (openBills.length && !confirmOpenBills) {
+              setConfirmOpenBills(true);
+              return;
+            }
             setBusy(true);
             try {
               onClosed(await closeShift(total, note));

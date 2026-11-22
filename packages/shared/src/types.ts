@@ -1,7 +1,7 @@
 // Shapes returned by the ShopFlow API v2 (see docs/SYNC.md) plus POS-local types.
 
-export type Role = 'owner' | 'cashier' | 'stock';
-export const ROLE_LABEL: Record<Role, string> = { owner: 'Chủ cửa hàng', cashier: 'Thu ngân', stock: 'Nhân viên kho' };
+export type Role = 'owner' | 'cashier';
+export const ROLE_LABEL: Record<Role, string> = { owner: 'Chủ cửa hàng', cashier: 'Thu ngân' };
 
 export interface User {
   id: string;

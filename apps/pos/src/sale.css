@@ -293,3 +293,10 @@
 .level-fill.low { background: #ef4444; }
 .stock-foot { display: flex; justify-content: space-between; padding: 10px 4px; color: var(--muted); }
 .stock-table td, .stock-table th { white-space: nowrap; }
+.count-input.wide { width: 130px; }
+
+/* ---- connection banner */
+.net-banner { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 8px 14px; font-weight: 700; color: #7c2d12; background: #ffedd5; border-bottom: 1px solid #fdba74; }
+.net-banner.unauthorized { color: #7f1d1d; background: #fee2e2; border-color: #fca5a5; }
+.net-banner button { min-height: 34px; padding: 0 12px; border-radius: 8px; border: 1px solid currentColor; background: transparent; color: inherit; font-weight: 700; }
+.error-text.strong { font-weight: 800; }

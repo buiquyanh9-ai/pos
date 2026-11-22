@@ -10,7 +10,7 @@ import { applyOrderStock, moveStock, productUnitCost } from './inventory.ts';
 
 export const DEMO_ACCOUNTS = [
   { username: 'thungan', name: 'Kim', role: 'cashier', password: 'thungan123', pin: '1111' },
-  { username: 'kho', name: 'Minh', role: 'stock', password: 'kho123456', pin: '2222' },
+  { username: 'kho', name: 'Minh', role: 'cashier', password: 'kho123456', pin: '2222' },
   { username: 'chu', name: 'Hiền', role: 'owner', password: 'chu123456', pin: '3333' },
 ] as const;
 

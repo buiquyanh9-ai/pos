@@ -399,6 +399,8 @@ function migrate(db: DB) {
     if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_orders_shift ON orders(shift_id)');
+  // The stock-staff role was removed: those accounts become cashiers (cashiers now do all stock work).
+  db.exec("UPDATE users SET role = 'cashier' WHERE role = 'stock'");
   // QR payments are bank transfers: merge them so reports show one method.
   db.exec("UPDATE orders SET payment_method = 'transfer' WHERE payment_method = 'qr'");
   // v1 -> v2: build categories from the legacy text column.

@@ -24,6 +24,8 @@ export function defaultBackendUrl(): string {
   const fromEnv = import.meta.env.VITE_API_URL as string | undefined;
   if (fromEnv) return fromEnv;
   if (Capacitor.isNativePlatform()) return '';
+  // Served by the backend itself (http://pc:4000/pos/ or a public https link): same origin.
+  if (typeof location !== 'undefined' && location.pathname.startsWith('/pos')) return location.origin;
   if (typeof location !== 'undefined' && location.protocol.startsWith('http')) {
     return `${location.protocol}//${location.hostname}:4000`;
   }

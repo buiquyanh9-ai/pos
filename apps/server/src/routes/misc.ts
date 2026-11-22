@@ -84,7 +84,7 @@ export function miscRoutes(db: DB) {
   r.get('/notifications', (req, res) => {
     const u = req.user!;
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
-    const role = ['owner', 'cashier', 'stock'].includes(u.role) ? u.role : 'owner';
+    const role = ['owner', 'cashier'].includes(u.role) ? u.role : 'owner';
     const rows = db
       .prepare(
         `SELECT n.*, (r.user_id IS NOT NULL) AS is_read FROM notifications n

@@ -68,7 +68,9 @@ test('wrong PIN is rejected; me returns the user', async () => {
 test('roles are enforced', async () => {
   assert.equal((await call('POST', '/products', { name: 'X', price: 1 }, 'cashier')).status, 403);
   assert.equal((await call('GET', '/users', undefined, 'stock')).status, 403);
-  assert.equal((await call('POST', '/orders', order(), 'stock')).status, 403);
+  // The former stock-staff account is now a cashier: it can sell and do stock work, not owner tasks.
+  assert.equal((await call('GET', '/auth/me', undefined, 'stock')).body.user.role, 'cashier');
+  assert.equal((await call('POST', '/categories', { name: 'X' }, 'stock')).status, 403);
   assert.equal((await call('GET', `/reports/summary?from=2020-01-01T00:00:00Z&to=2030-01-01T00:00:00Z`, undefined, 'cashier')).status, 400);
 });
 
@@ -409,4 +411,17 @@ test('cash in/out changes expected cash; store settings shared; usage per item',
   assert.equal((await call('GET', '/store', undefined, 'cashier')).body.bank_account, '0123456789');
   const u = (await call('GET', `/inventory/usage?from=2020-01-01T00:00:00Z&to=2030-01-01T00:00:00Z`)).body.usage;
   assert.ok(u['i-sua-dac'].sale < 0);
+});
+
+test('direct stock import by a cashier updates quantity, unit cost and history', async () => {
+  const before = await item('i-duong');
+  const r = await call('POST', '/inventory/import', { lines: [{ itemId: 'i-duong', qty: 5, unitCost: 24000 }], supplierId: 's-sua', note: 'Hoá đơn 123' }, 'cashier');
+  assert.equal(r.status, 201);
+  assert.equal(r.body.total, 120000);
+  const after = await item('i-duong');
+  assert.equal(Math.round((after.qty - before.qty) * 1000) / 1000, 5);
+  assert.equal(after.unitCost, 24000);
+  const m = (await call('GET', '/inventory/moves?itemId=i-duong&type=import')).body.moves[0];
+  assert.ok(m.reason.includes('Hoá đơn 123'));
+  assert.equal((await call('POST', '/inventory/import', { lines: [{ itemId: 'i-duong', qty: 0 }] }, 'cashier')).status, 400);
 });

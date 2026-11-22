@@ -11,3 +11,4 @@ apps/pos/android/app/src/main/assets/public/
 *.keystore
 .idea/
 backups/
+tools/

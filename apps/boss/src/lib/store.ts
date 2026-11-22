@@ -39,9 +39,14 @@ function write(k: string, v: unknown) {
   }
 }
 
+/** Boss served by the backend (http://pc:4000/boss/ on the Wi-Fi, or a public https link from
+ *  anywhere): the API is on the same origin, whatever address the phone used to open it. */
+const sameOrigin = typeof location !== 'undefined' && location.pathname.startsWith('/boss');
+
 function defaultUrl() {
   const env = import.meta.env.VITE_API_URL as string | undefined;
   if (env) return env;
+  if (sameOrigin) return location.origin;
   if (typeof location !== 'undefined' && location.protocol.startsWith('http') && location.hostname !== 'localhost') {
     return `${location.protocol}//${location.hostname}:4000`;
   }
@@ -50,7 +55,7 @@ function defaultUrl() {
 
 const saved = read<Session | null>(K.session, null);
 let state: State = {
-  url: read(K.url, defaultUrl()),
+  url: sameOrigin ? location.origin : read(K.url, defaultUrl()),
   session: saved && saved.expiresAt > new Date().toISOString() ? saved : null,
   live: 'off',
   unread: 0,

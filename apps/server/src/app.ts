@@ -28,6 +28,27 @@ export interface AppOptions {
 export function createApp({ db, apiKey }: AppOptions) {
   const app = express();
   app.disable('x-powered-by');
+  // Behind a tunnel / reverse proxy on this machine (cloudflared, Caddy), use the real client IP
+  // from X-Forwarded-For so per-IP login lockout and rate limits apply to the right person.
+  app.set('trust proxy', 'loopback');
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    next();
+  });
+  // Simple per-IP rate limit for the API (generous for a shop, stops floods when exposed to the Internet).
+  const hits = new Map<string, { n: number; reset: number }>();
+  app.use('/api', (req, res, next) => {
+    if (req.path === '/events') return next();
+    const ip = req.ip ?? '';
+    const t = Date.now();
+    const h = hits.get(ip);
+    if (!h || t > h.reset) hits.set(ip, { n: 1, reset: t + 60_000 });
+    else if (++h.n > 1200) return void res.status(429).json({ error: 'too many requests, slow down' });
+    if (hits.size > 5000) hits.clear();
+    next();
+  });
   app.use(cors());
   app.use(express.json({ limit: '1mb' }));
 

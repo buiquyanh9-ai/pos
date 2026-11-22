@@ -87,7 +87,7 @@ export function kitchenRoutes(db: DB) {
   }
 
   // Start of day/shift: issue rice / vegetables / tea from storage to the kitchen.
-  r.post('/kitchen/open', allow('stock', 'cashier'), (req, res) => {
+  r.post('/kitchen/open', allow('cashier'), (req, res) => {
     const lines = readQtyLines(req.body?.lines, 'lines');
     const shiftId = str(req.body?.shiftId, 'shiftId', { optional: true, max: 64 }) ?? null;
     const userId = actorId(req);
@@ -107,7 +107,7 @@ export function kitchenRoutes(db: DB) {
   });
 
   // Top-up during the shift (e.g. cook another 5 kg of rice).
-  r.post('/kitchen/:id/add', allow('stock', 'cashier'), (req, res) => {
+  r.post('/kitchen/:id/add', allow('cashier'), (req, res) => {
     const id = req.params.id as string;
     const lines = readQtyLines(req.body?.lines, 'lines');
     const userId = actorId(req);
@@ -126,7 +126,7 @@ export function kitchenRoutes(db: DB) {
   });
 
   // End of shift: what is left goes back to storage; waste is recorded (already out of storage).
-  r.post('/kitchen/:id/close', allow('stock', 'cashier'), (req, res) => {
+  r.post('/kitchen/:id/close', allow('cashier'), (req, res) => {
     const id = req.params.id as string;
     const raw = req.body?.lines;
     if (!Array.isArray(raw)) throw bad('lines must be an array');
@@ -166,7 +166,7 @@ export function kitchenRoutes(db: DB) {
   });
 
   // Damaged / lost goods straight from storage (e.g. torn takeaway boxes).
-  r.post('/inventory/items/:id/waste', allow('stock', 'cashier'), (req, res) => {
+  r.post('/inventory/items/:id/waste', allow('cashier'), (req, res) => {
     const id = req.params.id as string;
     const qty = round(num(req.body?.qty, 'qty', { min: 0.001 })!);
     const reason = reqStr(req.body?.reason, 'reason', 200);

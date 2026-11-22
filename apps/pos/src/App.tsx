@@ -11,6 +11,7 @@ import { Toasts } from './components/Toasts';
 import { ICON, MoreMenu, type MoreItem } from './components/MoreMenu';
 import { cartReducer, emptyCart, type Cart } from './lib/cart';
 import { CONNECTION_LABEL, getState, logout, pendingCount, syncNow, usePos } from './lib/store';
+import { load, save } from './lib/storage';
 import { getScanner } from './hardware';
 import { notify } from './lib/notify';
 import type { LocalOrder, Role } from './lib/types';
@@ -21,11 +22,11 @@ type Tab = 'sale' | 'orders' | 'reports' | 'stock' | 'shift' | 'admin' | 'settin
 const MENU: (MoreItem & { id: Tab | 'logout'; roles: Role[]; title: string })[] = [
   { id: 'orders', label: 'Hoạt động', title: 'Hoạt động: đơn hàng gần đây', icon: ICON.activity, color: '#22c55e', roles: ['owner', 'cashier'] },
   { id: 'reports', label: 'Báo cáo', title: 'Báo cáo doanh thu', icon: ICON.report, color: '#3b82f6', roles: ['owner', 'cashier'] },
-  { id: 'stock', label: 'Hàng tồn', title: 'Hàng tồn', icon: ICON.stock, color: '#ef4444', roles: ['owner', 'cashier', 'stock'] },
+  { id: 'stock', label: 'Hàng tồn', title: 'Hàng tồn', icon: ICON.stock, color: '#ef4444', roles: ['owner', 'cashier'] },
   { id: 'admin', label: 'Nhân viên & thực đơn', title: 'Quản lý', icon: ICON.staff, color: '#a855f7', roles: ['owner'] },
   { id: 'shift', label: 'Két tiền', title: 'Két tiền (ca làm việc)', icon: ICON.cash, color: '#0ea5e9', roles: ['owner', 'cashier'] },
-  { id: 'settings', label: 'Cài đặt', title: 'Cài đặt', icon: ICON.settings, color: '#6366f1', roles: ['owner', 'cashier', 'stock'] },
-  { id: 'logout', label: 'Đăng xuất', title: '', icon: ICON.logout, color: '#64748b', roles: ['owner', 'cashier', 'stock'] },
+  { id: 'settings', label: 'Cài đặt', title: 'Cài đặt', icon: ICON.settings, color: '#6366f1', roles: ['owner', 'cashier'] },
+  { id: 'logout', label: 'Đăng xuất', title: '', icon: ICON.logout, color: '#64748b', roles: ['owner', 'cashier'] },
 ];
 
 /** Turn a paid order back into an editable cart ("Sửa đơn"). Options become part of the note. */
@@ -53,7 +54,9 @@ export function App() {
   const [query, setQuery] = useState('');
   const [clock, setClock] = useState(() => new Date());
   // Cart lives here so it survives switching pages.
-  const [cart, dispatch] = useReducer(cartReducer, emptyCart);
+  // The cart is saved on every change, so a reload, crash or power cut never loses the order being taken.
+  const [cart, dispatch] = useReducer(cartReducer, emptyCart, () => ({ ...emptyCart, ...load<Partial<Cart>>('shopflow.cart', {}) }));
+  useEffect(() => void save('shopflow.cart', cart), [cart]);
   const connection = usePos((s) => s.connection);
   const pending = usePos(pendingCount);
   const syncing = usePos((s) => s.syncing);
@@ -109,7 +112,10 @@ export function App() {
   const items = MENU.filter((m) => role && m.roles.includes(role));
   const pick = (id: string) => {
     setMore(false);
-    if (id === 'logout') return void logout();
+    if (id === 'logout') {
+      if (cart.lines.length && !cart.openId) return notify('Hoá đơn đang có món chưa lưu: bấm “Lưu đơn” hoặc “Xoá” trước khi đăng xuất', 'error');
+      return void logout();
+    }
     setTab(id as Tab);
   };
   const needsShift = tab === 'sale' && !shift;
@@ -173,6 +179,14 @@ export function App() {
               </button>
             </div>
           </header>
+        )}
+        {(connection === 'offline' || connection === 'unauthorized') && (
+          <div className={`net-banner ${connection}`} role="status">
+            {connection === 'offline'
+              ? `Mất kết nối máy chủ: vẫn bán bình thường, ${pending ? `${pending} đơn đang chờ và ` : ''}sẽ tự gửi khi có mạng lại.`
+              : 'Phiên đăng nhập đã hết hạn: đăng nhập lại để tiếp tục gửi đơn. Đơn đã bán vẫn được giữ trên máy.'}
+            <button onClick={() => void syncNow()}>Thử lại</button>
+          </div>
         )}
         <main className="content">
           {needsShift ? (

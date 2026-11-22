@@ -212,6 +212,9 @@ export const api = {
     request<KitchenSession>(c, 'POST', `/kitchen/${encodeURIComponent(id)}/close`, { lines }),
   kitchenSessions: (c: ApiConfig) => request<{ sessions: KitchenSession[] }>(c, 'GET', '/kitchen/sessions'),
 
+  importStock: (c: ApiConfig, body: { supplierId?: string; note?: string; lines: { itemId: string; qty: number; unitCost?: number }[] }) =>
+    request<{ id: string; total: number }>(c, 'POST', '/inventory/import', body),
+
   // ---- purchasing
   suppliers: (c: ApiConfig) => request<{ suppliers: Supplier[] }>(c, 'GET', '/suppliers'),
   purchases: (c: ApiConfig, status?: string) => request<{ purchases: Purchase[] }>(c, 'GET', `/purchases${q({ status })}`),

@@ -48,7 +48,7 @@ export function inventoryRoutes(db: DB) {
     return t;
   }
 
-  r.post('/inventory/items', allow('stock'), (req, res) => {
+  r.post('/inventory/items', allow('cashier'), (req, res) => {
     const b = (req.body ?? {}) as Row;
     const f = readItem(b, true);
     const id = str(b.id, 'id', { optional: true, max: 64 }) ?? randomUUID();
@@ -64,7 +64,7 @@ export function inventoryRoutes(db: DB) {
     res.status(201).json(itemDto(getItem(db, id)));
   });
 
-  r.put('/inventory/items/:id', allow('stock'), (req, res) => {
+  r.put('/inventory/items/:id', allow('cashier'), (req, res) => {
     const id = req.params.id as string;
     getItem(db, id);
     const f = readItem((req.body ?? {}) as Row, false);
@@ -79,7 +79,7 @@ export function inventoryRoutes(db: DB) {
   });
 
   // Manual correction (spoilage, breakage, found stock). Either a signed delta or the new absolute qty.
-  r.post('/inventory/items/:id/adjust', allow('stock'), (req, res) => {
+  r.post('/inventory/items/:id/adjust', allow('cashier'), (req, res) => {
     const id = req.params.id as string;
     const reason = reqStr(req.body?.reason, 'reason', 200);
     const delta = num(req.body?.delta, 'delta', { optional: true });
@@ -93,6 +93,41 @@ export function inventoryRoutes(db: DB) {
       audit(db, actorId(req), 'inventory.adjust', 'inventory_item', id, { delta: d, reason });
     });
     res.json(itemDto(getItem(db, id)));
+  });
+
+  // Direct goods receipt (nhập kho) without a purchase request: owner and cashiers.
+  r.post('/inventory/import', allow('cashier'), (req, res) => {
+    const b = (req.body ?? {}) as Row;
+    if (!Array.isArray(b.lines) || !b.lines.length) throw bad('lines must be a non-empty array');
+    const supplierId = str(b.supplierId, 'supplierId', { optional: true, max: 64 }) ?? null;
+    const supplier = supplierId ? db.prepare('SELECT name FROM suppliers WHERE id = ?').get(supplierId) : undefined;
+    if (supplierId && !supplier) throw bad('supplierId not found');
+    const note = str(b.note, 'note', { optional: true, max: 300 }) ?? '';
+    const ref = randomUUID();
+    const userId = actorId(req);
+    let total = 0;
+    tx(db, () => {
+      (b.lines as unknown[]).forEach((raw, i) => {
+        const l = (raw ?? {}) as Row;
+        const itemId = reqStr(l.itemId, `lines[${i}].itemId`, 64);
+        getItem(db, itemId);
+        const qty = num(l.qty, `lines[${i}].qty`, { min: 0.001 })!;
+        const unitCost = int(l.unitCost, `lines[${i}].unitCost`, { optional: true, min: 0, max: MAX_MONEY });
+        moveStock(db, itemId, qty, {
+          type: 'import',
+          refType: 'receipt',
+          refId: ref,
+          userId,
+          reason: [supplier ? `Nhập từ ${supplier.name}` : 'Nhập kho', note].filter(Boolean).join(' · '),
+        });
+        if (unitCost) {
+          db.prepare('UPDATE inventory_items SET unit_cost = ? WHERE id = ?').run(unitCost, itemId);
+          total += Math.round(unitCost * qty);
+        }
+      });
+      audit(db, userId, 'inventory.import', 'receipt', ref, { lines: b.lines, supplierId, note, total });
+    });
+    res.status(201).json({ id: ref, total });
   });
 
   r.get('/inventory/moves', (req, res) => {
@@ -148,7 +183,7 @@ export function inventoryRoutes(db: DB) {
     };
   };
 
-  r.post('/inventory/stocktakes', allow('stock', 'cashier'), (req, res) => {
+  r.post('/inventory/stocktakes', allow('cashier'), (req, res) => {
     const b = (req.body ?? {}) as Row;
     if (!Array.isArray(b.lines) || !b.lines.length) throw bad('lines must be a non-empty array');
     const shiftId = str(b.shiftId, 'shiftId', { optional: true, max: 64 }) ?? null;
@@ -204,7 +239,7 @@ export function inventoryRoutes(db: DB) {
   r.get('/suppliers', (_req, res) => {
     res.json({ suppliers: db.prepare('SELECT * FROM suppliers WHERE active = 1 ORDER BY name').all().map(supplierDto) });
   });
-  r.post('/suppliers', allow('stock'), (req, res) => {
+  r.post('/suppliers', allow('cashier'), (req, res) => {
     const id = randomUUID();
     db.prepare('INSERT INTO suppliers (id, name, phone, note) VALUES (?, ?, ?, ?)').run(
       id,
@@ -215,7 +250,7 @@ export function inventoryRoutes(db: DB) {
     audit(db, actorId(req), 'supplier.create', 'supplier', id, req.body);
     res.status(201).json(supplierDto(db.prepare('SELECT * FROM suppliers WHERE id = ?').get(id)!));
   });
-  r.put('/suppliers/:id', allow('stock'), (req, res) => {
+  r.put('/suppliers/:id', allow('cashier'), (req, res) => {
     const id = req.params.id as string;
     const x = db
       .prepare('UPDATE suppliers SET name = COALESCE(?, name), phone = COALESCE(?, phone), note = COALESCE(?, note), active = COALESCE(?, active) WHERE id = ?')
@@ -302,7 +337,7 @@ export function inventoryRoutes(db: DB) {
     res.json(purchaseDto(req.params.id as string));
   });
 
-  r.post('/purchases', allow('stock'), (req, res) => {
+  r.post('/purchases', allow('cashier'), (req, res) => {
     const b = (req.body ?? {}) as Row;
     if (!Array.isArray(b.lines) || !b.lines.length) throw bad('lines must be a non-empty array');
     const supplierId = str(b.supplierId, 'supplierId', { optional: true, max: 64 }) ?? null;
@@ -358,7 +393,7 @@ export function inventoryRoutes(db: DB) {
         title: `Đề xuất nhập hàng đã được ${approve ? 'duyệt' : 'từ chối'}`,
         body: str(req.body?.note, 'note', { optional: true, max: 500 }) ?? '',
         data: { purchaseId: id },
-        roles: ['stock'],
+        roles: ['cashier'],
       });
     });
     purchasePublish(id);
@@ -373,7 +408,7 @@ export function inventoryRoutes(db: DB) {
   });
 
   // Goods arrived: add to stock (actual quantities may differ from the request) and update unit cost.
-  r.post('/purchases/:id/receive', allow('stock'), (req, res) => {
+  r.post('/purchases/:id/receive', allow('cashier'), (req, res) => {
     const id = req.params.id as string;
     const userId = actorId(req);
     const overrides = new Map<string, { qty?: number; unitCost?: number }>();

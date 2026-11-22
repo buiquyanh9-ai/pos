@@ -1,4 +1,4 @@
-import { useMemo, useState, type Dispatch } from 'react';
+import { useMemo, useRef, useState, type Dispatch } from 'react';
 import { cashSuggestions, optionsLabel, qtyOfProduct, toOrderItems, totalsOf, type Cart, type CartAction } from '../lib/cart';
 import { fold, imageSrc, money } from '../lib/format';
 import { closeOpenOrder, commitSale, getState, refreshOpenOrders, saveOpenOrder, usePos } from '../lib/store';
@@ -385,6 +385,8 @@ function DiscountDialog({ subtotal, initial, onApply, onClose }: { subtotal: num
 
 function PaymentDialog({ total, items, onPay, onClose }: { total: number; items: Cart['lines']; onPay: (m: PaymentMethod, paid: number) => void; onClose: () => void }) {
   const [method, setMethod] = useState<PaymentMethod>('cash');
+  // A ref (not state) so a fast double tap is blocked before React re-renders.
+  const submitted = useRef(false);
   const [paid, setPaid] = useState(total);
   const [typed, setTyped] = useState(false);
   const effectivePaid = method === 'cash' ? paid : total;
@@ -440,7 +442,16 @@ function PaymentDialog({ total, items, onPay, onClose }: { total: number; items:
       {method === 'transfer' && (
         <VietQr amount={total} message={`Thanh toan ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h')}`} />
       )}
-      <button className="btn primary big full" disabled={short} onClick={() => onPay(method, effectivePaid)}>
+      <button
+        className="btn primary big full"
+        disabled={short}
+        onClick={() => {
+          if (submitted.current) return;
+          submitted.current = true;
+          onPay(method, effectivePaid);
+          setTimeout(() => (submitted.current = false), 1500);
+        }}
+      >
         Hoàn tất
       </button>
       </div></div>

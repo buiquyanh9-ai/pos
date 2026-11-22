@@ -13,7 +13,8 @@
     "typecheck": "npm run typecheck -w apps/server && npm run typecheck -w apps/pos && npm run typecheck -w apps/boss",
     "test": "npm test -w apps/server && npm test -w apps/pos && npm test -w apps/boss",
     "dev:boss": "npm run dev -w apps/boss",
-    "serve": "npm run build && npm start -w apps/server"
+    "serve": "npm run build && npm start -w apps/server",
+    "tunnel": "node scripts/tunnel.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

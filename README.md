@@ -57,12 +57,24 @@ Stock rules applied from the file:
 - **Exact stock:** sườn, xá xíu, gà, bò, cá kho, bottled drinks. One unit per portion sold, shared by dine-in and takeaway.
 - **Estimate stock:** rice, vegetables, tea, takeaway boxes, shown as "còn khoảng X". Rice, vegetables and tea are issued to the kitchen at the start of the shift and counted at the end (*Kho → Bếp*). Each takeaway rice portion or extra meat/fish uses 1 box. Damaged boxes are recorded with *Ghi hao hụt*.
 
+### Owner on any network (4G, other Wi-Fi)
+
+```powershell
+npm run serve          # terminal 1: the shop server
+npm run tunnel         # terminal 2: public https link (Cloudflare Quick Tunnel, free)
+```
+
+`npm run tunnel` prints `https://<random>.trycloudflare.com/boss/`. Open that link in Safari on the iPhone and add it to the Home Screen. It works from anywhere, with real-time updates.
+- Requires `tools/cloudflared.exe`, downloaded from github.com/cloudflare/cloudflared/releases.
+- The link changes every time the tunnel restarts. For a permanent address, use a named Cloudflare tunnel with your own domain, or a VPS (`docs/DEPLOY.md`).
+- When exposed to the Internet, the server applies: login lockout per account and per real client IP (proxy-aware), a per-IP rate limit, and security headers.
+
 ### Demo accounts (sample data only)
 
 | Role | Username | Password (Boss) | PIN (POS) |
 |---|---|---|---|
 | Cashier (Thu ngân): Kim | `thungan` | `thungan123` | `1111` |
-| Stock staff (Nhân viên kho): Minh | `kho` | `kho123456` | `2222` |
+| Cashier (Thu ngân): Minh | `kho` | `kho123456` | `2222` |
 | Owner (Chủ cửa hàng): Hiền | `chu` | `chu123456` | `3333` |
 
 For a real shop:
@@ -120,10 +132,9 @@ For a real shop:
 
 Revenue rules (net, refunds, voids, profit) are in [docs/SYNC.md](docs/SYNC.md).
 
-**Roles:**
-- Owner: everything, including store-wide reports, approvals and staff management.
-- Cashier: sell, void/refund with a reason, shifts, stock counts.
-- Stock staff: inventory, counts, purchase requests, receiving.
+**Roles (two):**
+- **Owner:** everything. Usually works remotely from the Boss app on the phone (reports, approvals, staff, menu); still has a POS account.
+- **Cashier:** works at the POS. Selling, void/refund with a reason, shifts and cash, and all stock work: counts, kitchen open/close, waste, direct goods receipt (*nhập kho*), purchase requests. The former stock-staff role was merged into cashier.
 
 ## Android
 

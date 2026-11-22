@@ -18,7 +18,8 @@ export function StockScreen() {
   const [items, setItems] = useState<InventoryItem[] | null>(null);
   const reload = useCallback(() => remote(api.inventory).then((r) => setItems(r.items)).catch(err), []);
   useEffect(() => void reload(), [reload]);
-  const canManage = role === 'owner' || role === 'stock';
+  // Cashiers do all stock work at the counter (adjust, receive goods, purchase requests).
+  const canManage = role === 'owner' || role === 'cashier';
   const lowCount = items?.filter((i) => i.low).length ?? 0;
 
   const menu: { id: Section; label: string; show: boolean }[] = [
@@ -26,7 +27,7 @@ export function StockScreen() {
     { id: 'low', label: `Hàng sắp hết${lowCount ? ` (${lowCount})` : ''}`, show: true },
     { id: 'kitchen', label: 'Bếp: đầu ca / cuối ca', show: true },
     { id: 'count', label: 'Kiểm kê cuối ca', show: true },
-    { id: 'purchase', label: 'Nhập hàng', show: canManage },
+    { id: 'purchase', label: 'Nhập kho / đề xuất nhập', show: canManage },
     { id: 'history', label: 'Lịch sử nhập / xuất', show: true },
   ];
 
@@ -516,6 +517,7 @@ function Purchasing({ items, onChanged }: { items: InventoryItem[]; onChanged: (
   const [purchases, setPurchases] = useState<Purchase[] | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [receiving, setReceiving] = useState<Purchase | null>(null);
   const reload = useCallback(() => remote(api.purchases).then((r) => setPurchases(r.purchases)).catch(err), []);
   useEffect(() => {
@@ -525,8 +527,11 @@ function Purchasing({ items, onChanged }: { items: InventoryItem[]; onChanged: (
   return (
     <>
       <div className="stock-actions">
-        <button className="btn primary" onClick={() => setCreating(true)}>
-          ＋ Tạo đề xuất nhập hàng
+        <button className="btn primary" onClick={() => setImporting(true)}>
+          ＋ Nhập kho ngay (hàng đã về)
+        </button>
+        <button className="btn secondary" onClick={() => setCreating(true)}>
+          Đề xuất nhập hàng (chờ chủ duyệt)
         </button>
       </div>
       <ul className="order-list">
@@ -562,6 +567,7 @@ function Purchasing({ items, onChanged }: { items: InventoryItem[]; onChanged: (
           onDone={() => (setCreating(false), reload())}
         />
       )}
+      {importing && <DirectImport items={items} suppliers={suppliers} onClose={() => setImporting(false)} onDone={() => (setImporting(false), onChanged())} />}
       {receiving && <ReceiveDialog p={receiving} onClose={() => setReceiving(null)} onDone={() => (setReceiving(null), reload(), onChanged())} />}
     </>
   );
@@ -641,6 +647,91 @@ function CreatePurchase({ items, suppliers, onClose, onDone }: { items: Inventor
           }
         >
           Gửi đề xuất · {chosen.length} mặt hàng · {money(Math.round(total))}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/** Goods arrived without a request (market run, regular supplier): add them to stock right away. */
+function DirectImport({ items, suppliers, onClose, onDone }: { items: InventoryItem[]; suppliers: Supplier[]; onClose: () => void; onDone: () => void }) {
+  const [lines, setLines] = useState<Record<string, { qty: string; cost: string }>>({});
+  const [supplierId, setSupplierId] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const n = (s: string | undefined) => Number((s ?? '').replace(/\./g, '').replace(',', '.')) || 0;
+  const chosen = items.filter((i) => n(lines[i.id]?.qty) > 0);
+  const total = chosen.reduce((s, i) => s + n(lines[i.id]?.qty) * (n(lines[i.id]?.cost) || i.unitCost), 0);
+  const set = (id: string, k: 'qty' | 'cost', v: string) => setLines({ ...lines, [id]: { qty: lines[id]?.qty ?? '', cost: lines[id]?.cost ?? '', [k]: v } });
+  return (
+    <Modal title="Nhập kho (hàng đã về)" onClose={onClose} wide>
+      <div className="purchase-form">
+        <div className="admin-grid">
+          <label className="field">
+            Nhà cung cấp
+            <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+              <option value="">— Không chọn / mua lẻ —</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            Ghi chú (số hoá đơn, người giao…)
+            <input value={note} onChange={(e) => setNote(e.target.value)} />
+          </label>
+        </div>
+        <table className="stock-table">
+          <thead>
+            <tr>
+              <th>Mặt hàng</th>
+              <th className="num">Đang có</th>
+              <th className="num">Số lượng nhập</th>
+              <th className="num">Giá nhập / đơn vị</th>
+              <th className="num">Thành tiền</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((i) => (
+              <tr key={i.id} className={i.low ? 'low' : ''}>
+                <td>
+                  {i.name} <span className="muted small">{i.unit}</span>
+                </td>
+                <td className="num muted">{i.tracking === 'estimate' ? stockText(i) : qty(i.qty)}</td>
+                <td className="num">
+                  <input className="count-input" inputMode="decimal" value={lines[i.id]?.qty ?? ''} onChange={(e) => set(i.id, 'qty', e.target.value)} placeholder="0" />
+                </td>
+                <td className="num">
+                  <input className="count-input wide" inputMode="numeric" value={lines[i.id]?.cost ?? ''} onChange={(e) => set(i.id, 'cost', e.target.value)} placeholder={i.unitCost ? String(i.unitCost) : 'giá'} />
+                </td>
+                <td className="num">{n(lines[i.id]?.qty) > 0 ? money(Math.round(n(lines[i.id]?.qty) * (n(lines[i.id]?.cost) || i.unitCost))) : ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button
+          className="btn primary big full"
+          disabled={!chosen.length || busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await remote(api.importStock, {
+                supplierId: supplierId || undefined,
+                note,
+                lines: chosen.map((i) => ({ itemId: i.id, qty: n(lines[i.id].qty), unitCost: n(lines[i.id].cost) || undefined })),
+              });
+              notify(`Đã nhập kho ${chosen.length} mặt hàng`, 'success');
+              onDone();
+            } catch (e) {
+              err(e);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Xác nhận nhập kho · {chosen.length} mặt hàng · {money(Math.round(total))}
         </button>
       </div>
     </Modal>

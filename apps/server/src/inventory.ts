@@ -70,7 +70,7 @@ export function moveStock(db: DB, itemId: string, delta: number, ref: MoveRef) {
       title: `Sắp hết: ${item.name}`,
       body: `Còn ${after} ${item.unit} (tối thiểu ${min} ${item.unit})`,
       data: { itemId, qty: after, minQty: min },
-      roles: ['owner', 'stock'],
+      roles: ['owner', 'cashier'],
     });
   }
   stockChanged();

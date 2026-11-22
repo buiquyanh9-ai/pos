@@ -21,6 +21,14 @@ const TABS: { id: Exclude<Tab, 'notifications'>; label: string; icon: string }[]
 export function App() {
   const session = useBoss((s) => s.session);
   const unread = useBoss((s) => s.unread);
+  const live = useBoss((s) => s.live);
+  // Show the reconnect banner only if the live link stays down for a few seconds (phones switch networks often).
+  const [down, setDown] = useState(false);
+  useEffect(() => {
+    if (live === 'on') return setDown(false);
+    const t = setTimeout(() => setDown(true), 4000);
+    return () => clearTimeout(t);
+  }, [live]);
   const [tab, setTab] = useState<Tab>('home');
   const [toast, setToast] = useState<{ title: string; body: string } | null>(null);
 
@@ -51,6 +59,12 @@ export function App() {
   return (
     <div className="app">
       <InstallHint />
+      {down && (
+        <div className="net-banner" role="status">
+          Mất kết nối tới cửa hàng, đang thử lại… Số liệu có thể chưa mới nhất.
+          <button onClick={() => location.reload()}>Tải lại</button>
+        </div>
+      )}
       <main className="main">
         {tab === 'home' && <Home go={setTab} />}
         {tab === 'reports' && <Reports />}
