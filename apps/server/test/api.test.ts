@@ -116,7 +116,7 @@ test('a sale deducts recipe stock exactly once, even when uploaded twice or conc
   const after = await item('i-sua-dac');
   assert.equal(Math.round((before.qty - after.qty) * 1000) / 1000, 0.06); // 2 x 0.03 kg
   const created = a.status === 201 ? a.body : b.body;
-  assert.equal(created.cashier, 'Thu ngân Lan (mẫu)');
+  assert.equal(created.cashier, 'Kim');
   assert.ok(created.costTotal > 0);
   const moves = await call('GET', `/inventory/moves?itemId=i-sua-dac&type=sale`);
   assert.equal(moves.body.moves.filter((m: { refId: string }) => m.refId === o.id).length, 1);

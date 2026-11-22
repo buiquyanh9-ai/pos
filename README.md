@@ -49,9 +49,9 @@ npm run serve        # builds POS + Boss, then serves everything on port 4000
 
 | Role | Username | Password (Boss) | PIN (POS) |
 |---|---|---|---|
-| Owner (Chủ cửa hàng) | `chu` | `chu123456` | `9999` |
-| Cashier (Thu ngân) | `thungan` | `thungan123` | `1111` |
-| Stock staff (Nhân viên kho) | `kho` | `kho123456` | `2222` |
+| Cashier (Thu ngân): Kim | `thungan` | `thungan123` | `1111` |
+| Stock staff (Nhân viên kho): Minh | `kho` | `kho123456` | `2222` |
+| Owner (Chủ cửa hàng): Hiền | `chu` | `chu123456` | `3333` |
 
 For a real shop:
 1. Start the backend once with `SEED=0` and an empty database.

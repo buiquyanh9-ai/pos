@@ -9,9 +9,9 @@ import { applyOrderStock, moveStock, productUnitCost } from './inventory.ts';
 // Real deployments: start with SEED=0 and create the owner via `npm run create-owner -w apps/server`.
 
 export const DEMO_ACCOUNTS = [
-  { username: 'chu', name: 'Chủ cửa hàng (mẫu)', role: 'owner', password: 'chu123456', pin: '9999' },
-  { username: 'thungan', name: 'Thu ngân Lan (mẫu)', role: 'cashier', password: 'thungan123', pin: '1111' },
-  { username: 'kho', name: 'Kho Minh (mẫu)', role: 'stock', password: 'kho123456', pin: '2222' },
+  { username: 'thungan', name: 'Kim', role: 'cashier', password: 'thungan123', pin: '1111' },
+  { username: 'kho', name: 'Minh', role: 'stock', password: 'kho123456', pin: '2222' },
+  { username: 'chu', name: 'Hiền', role: 'owner', password: 'chu123456', pin: '3333' },
 ] as const;
 
 const CATEGORIES = [
@@ -156,7 +156,7 @@ export function seedDemoSales(db: DB, days = 14, seed = 42) {
         const costs = items.map((l) => productUnitCost(db, l.p.id) ?? 0);
         db.prepare(
           `INSERT INTO orders (id, number, device_id, cashier_id, cashier, order_type, table_name, note, subtotal, discount, total, payment_method, paid, change_due, status, cost_total, created_at, received_at)
-           VALUES (?, ?, 'demo-seed', ?, 'Thu ngân Lan (mẫu)', ?, ?, '[MẪU]', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`,
+           VALUES (?, ?, 'demo-seed', ?, 'Kim', ?, ?, '[MẪU]', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`,
         ).run(id, `MAU-${String(++count).padStart(5, '0')}`, cashierId, type, type === 'dine_in' ? `Bàn ${1 + Math.floor(rand() * 8)}` : '', subtotal, discount, total, method, paid, paid - total,
           items.reduce((a, l, i) => a + costs[i] * l.qty, 0), createdAt, createdAt);
         items.forEach((l, i) =>

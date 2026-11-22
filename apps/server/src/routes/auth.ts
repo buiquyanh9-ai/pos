@@ -31,7 +31,7 @@ export function publicAuthRoutes(db: DB) {
 
   // Staff picker for the POS PIN login screen: names only, no secrets.
   r.get('/auth/staff', (_req, res) => {
-    const rows = db.prepare("SELECT * FROM users WHERE active = 1 AND pin_hash IS NOT NULL ORDER BY role = 'owner', name").all();
+    const rows = db.prepare("SELECT * FROM users WHERE active = 1 AND pin_hash IS NOT NULL ORDER BY CASE role WHEN 'cashier' THEN 0 WHEN 'stock' THEN 1 ELSE 2 END, name").all();
     res.json({ staff: rows.map((u) => ({ id: u.id, username: u.username, name: u.name, role: u.role })) });
   });
 
