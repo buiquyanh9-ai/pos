@@ -1,20 +1,21 @@
 import { useMemo, useState, type Dispatch } from 'react';
-import { cashSuggestions, toOrderItems, totalsOf, type Cart, type CartAction } from '../lib/cart';
+import { cashSuggestions, qtyOfProduct, toOrderItems, totalsOf, type Cart, type CartAction } from '../lib/cart';
 import { fold, money } from '../lib/format';
 import { commitSale, getState, usePos } from '../lib/store';
 import { openDrawer, printReceipt } from '../lib/receipt';
 import { notify } from '../lib/notify';
-import { PAYMENT_LABEL, type LocalOrder, type PaymentMethod } from '../lib/types';
+import { ORDER_TYPE_LABEL, PAYMENT_LABEL, type LocalOrder, type OrderType, type PaymentMethod } from '../lib/types';
 import { Modal, Numpad } from '../components/Modal';
 
 interface Props {
   cart: Cart;
   dispatch: Dispatch<CartAction>;
+  query: string;
+  setQuery: (value: string) => void;
 }
 
-export function SaleScreen({ cart, dispatch }: Props) {
+export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
   const products = usePos((s) => s.products);
-  const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string>('');
   const [showCart, setShowCart] = useState(false); // narrow screens: cart as a sheet
   const [paying, setPaying] = useState(false);
@@ -32,33 +33,12 @@ export function SaleScreen({ cart, dispatch }: Props) {
   }, [products, query, category]);
 
   const t = totalsOf(cart);
-  const qtyOf = (id: string) => cart.lines.find((l) => l.productId === id)?.qty ?? 0;
-
-  // Enter in search: exact barcode/SKU adds directly (works with scanners that type into the field).
-  const onSearchEnter = () => {
-    const q = query.trim();
-    const exact = products.find((p) => p.barcode === q || p.sku?.toLowerCase() === q.toLowerCase());
-    const pick = exact ?? (visible.length === 1 ? visible[0] : undefined);
-    if (pick) {
-      dispatch({ type: 'add', product: pick });
-      setQuery('');
-    } else if (q) notify(`Không tìm thấy "${q}"`, 'error');
-  };
+  const qtyOf = (id: string) => qtyOfProduct(cart, id);
 
   return (
     <div className="sale">
       <section className="catalog">
-        <div className="catalog-tools">
-          <input
-            className="search"
-            type="search"
-            inputMode="search"
-            placeholder="Tìm tên, SKU hoặc mã vạch…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && onSearchEnter()}
-          />
-        </div>
+        <div className="catalog-heading"><div><span className="eyebrow">BÁN HÀNG</span><h1>Tạo đơn hàng mới</h1></div><button className="ghost-action" onClick={() => dispatch({ type: 'clear' })}>Đơn mới <span>＋</span></button></div>
         <div className="chips">
           <button className={!category ? 'chip active' : 'chip'} onClick={() => setCategory('')}>
             Tất cả
@@ -78,6 +58,7 @@ export function SaleScreen({ cart, dispatch }: Props) {
               return (
                 <button key={p.id} className={q ? 'product in-cart' : 'product'} onClick={() => dispatch({ type: 'add', product: p })}>
                   {q > 0 && <span className="product-qty">{q}</span>}
+                  {p.imageUrl ? <img className="product-image" src={p.imageUrl} alt="" /> : <span className={`product-image product-letter tone-${(p.category || 'x').length % 5}`}>{p.name.slice(0, 1)}</span>}
                   <span className="product-name">{p.name}</span>
                   <span className="product-price">{money(p.price)}</span>
                   <span className={p.stock <= 0 ? 'product-stock out' : 'product-stock'}>Tồn: {p.stock}</span>
@@ -89,26 +70,28 @@ export function SaleScreen({ cart, dispatch }: Props) {
       </section>
 
       <aside className={showCart ? 'cart open' : 'cart'}>
-        <div className="cart-head">
-          <h2>Giỏ hàng ({t.count})</h2>
+        <div className="cart-head"><div><span className="eyebrow">ĐƠN HÀNG HIỆN TẠI</span><h2>Giỏ hàng ({t.count})</h2></div>
           <button className="icon-btn only-narrow" aria-label="Đóng giỏ hàng" onClick={() => setShowCart(false)}>
             ✕
           </button>
         </div>
+        <div className="order-types">{(Object.keys(ORDER_TYPE_LABEL) as OrderType[]).map((type) => <button key={type} className={cart.orderType === type ? 'order-type active' : 'order-type'} onClick={() => dispatch({ type: 'orderType', orderType: type })}>{ORDER_TYPE_LABEL[type]}</button>)}</div>
+        {cart.orderType === 'dine_in' && <div className="table-picker"><label>Bàn</label><input value={cart.tableName} onChange={(e) => dispatch({ type: 'table', tableName: e.target.value })} placeholder="Nhập số bàn" /><div className="table-chips">{['01','02','03','04','05'].map((table) => <button key={table} className={cart.tableName === table ? 'table-chip active' : 'table-chip'} onClick={() => dispatch({ type: 'table', tableName: table })}>{table}</button>)}</div></div>}
         <ul className="cart-lines">
           {cart.lines.length === 0 && <li className="empty">Chạm vào sản phẩm để thêm</li>}
           {cart.lines.map((l) => (
-            <li key={l.productId} className="cart-line">
+            <li key={l.key} className="cart-line">
               <div className="cart-line-info">
-                <span className="cart-line-name">{l.name}</span>
+                <button className="cart-line-name" onClick={() => dispatch({ type: 'setNote', key: l.key, note: l.note ? '' : 'Ít đá' })}>{l.name}</button>
                 <span className="muted">{money(l.price)}</span>
+                {l.note && <small className="line-note">* {l.note}</small>}
               </div>
               <div className="stepper">
-                <button aria-label="Giảm" onClick={() => dispatch({ type: 'setQty', productId: l.productId, qty: l.qty - 1 })}>
+                <button aria-label="Giảm" onClick={() => dispatch({ type: 'setQty', key: l.key, qty: l.qty - 1 })}>
                   −
                 </button>
                 <span>{l.qty}</span>
-                <button aria-label="Tăng" onClick={() => dispatch({ type: 'setQty', productId: l.productId, qty: l.qty + 1 })}>
+                <button aria-label="Tăng" onClick={() => dispatch({ type: 'setQty', key: l.key, qty: l.qty + 1 })}>
                   +
                 </button>
               </div>
@@ -116,7 +99,7 @@ export function SaleScreen({ cart, dispatch }: Props) {
             </li>
           ))}
         </ul>
-        <div className="cart-foot">
+        <div className="cart-foot"><label className="order-note"><span>Ghi chú đơn hàng</span><input value={cart.note} onChange={(e) => dispatch({ type: 'orderNote', note: e.target.value })} placeholder="Ví dụ: giao trước 12h..." /></label>
           <div className="row">
             <span>Tạm tính</span>
             <span>{money(t.subtotal)}</span>
@@ -164,7 +147,7 @@ export function SaleScreen({ cart, dispatch }: Props) {
           onClose={() => setPaying(false)}
           onPay={(method, paid) => {
             try {
-              const order = commitSale({ items: toOrderItems(cart), discount: t.discount, paymentMethod: method, paid });
+              const order = commitSale({ items: toOrderItems(cart), discount: t.discount, paymentMethod: method, paid, orderType: cart.orderType, tableName: cart.tableName, note: cart.note });
               dispatch({ type: 'clear' });
               setPaying(false);
               setShowCart(false);

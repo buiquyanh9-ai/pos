@@ -71,7 +71,24 @@ export function openDb(path: string): DB {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+// Additive column migrations: safe to run on every start, existing databases keep their data.
+const COLUMNS: [table: string, column: string, ddl: string][] = [
+  ['products', 'image_url', "TEXT"],
+  ['orders', 'order_type', "TEXT NOT NULL DEFAULT 'dine_in'"],
+  ['orders', 'table_name', "TEXT NOT NULL DEFAULT ''"],
+  ['orders', 'note', "TEXT NOT NULL DEFAULT ''"],
+  ['order_items', 'note', "TEXT NOT NULL DEFAULT ''"],
+];
+
+function migrate(db: DB) {
+  for (const [table, column, ddl] of COLUMNS) {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
 }
 
 export function now() {

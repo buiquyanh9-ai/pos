@@ -34,6 +34,9 @@ const SAMPLE_ORDER: LocalOrder = {
   number: 'TEST-0001',
   deviceId: 'test',
   cashier: '',
+  orderType: 'dine_in',
+  tableName: '',
+  note: '',
   items: [
     { productId: null, name: 'Cà phê sữa', price: 25000, qty: 2, lineTotal: 50000 },
     { productId: null, name: 'Bánh mì thịt', price: 25000, qty: 1, lineTotal: 25000 },

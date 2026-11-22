@@ -4,7 +4,7 @@ import { load, save } from './storage';
 import { loadSettings, saveSettings, type PosSettings } from './settings';
 import { uuid } from './ids';
 import { notify } from './notify';
-import type { LocalOrder, OrderItem, PaymentMethod, Product } from './types';
+import type { LocalOrder, OrderItem, OrderType, PaymentMethod, Product } from './types';
 
 // Central app state outside React so the sync loop, drivers and screens share it.
 // Offline-first: a sale is committed locally first, then uploaded by the sync loop.
@@ -40,7 +40,7 @@ let state: PosState = {
   settings: loadSettings(),
   products: load<Product[]>(K.catalog, []),
   catalogAt: load<string | null>(`${K.catalog}.at`, null),
-  orders: load<LocalOrder[]>(K.orders, []),
+  orders: load<LocalOrder[]>(K.orders, []).map((o) => ({ ...o, orderType: o.orderType ?? 'dine_in', tableName: o.tableName ?? '', note: o.note ?? '' })),
   connection: 'checking',
   syncing: false,
   lastError: null,
@@ -95,6 +95,9 @@ export interface NewSale {
   discount: number;
   paymentMethod: PaymentMethod;
   paid: number;
+  orderType: OrderType;
+  tableName: string;
+  note: string;
 }
 
 export function commitSale(sale: NewSale): LocalOrder {
@@ -107,6 +110,9 @@ export function commitSale(sale: NewSale): LocalOrder {
     number: nextOrderNumber(),
     deviceId: state.settings.deviceId,
     cashier: state.settings.cashier,
+    orderType: sale.orderType,
+    tableName: sale.tableName,
+    note: sale.note.trim(),
     items: sale.items,
     subtotal,
     discount,

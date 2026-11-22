@@ -4,6 +4,7 @@ export interface Product {
   barcode: string | null;
   name: string;
   category: string;
+  imageUrl: string | null;
   price: number;
   stock: number;
   active: boolean;
@@ -11,6 +12,7 @@ export interface Product {
 }
 
 export type PaymentMethod = 'cash' | 'card' | 'transfer';
+export type OrderType = 'dine_in' | 'takeaway' | 'delivery';
 
 export interface OrderItem {
   productId: string | null;
@@ -18,6 +20,7 @@ export interface OrderItem {
   price: number;
   qty: number;
   lineTotal: number;
+  note?: string;
 }
 
 export interface LocalOrder {
@@ -25,6 +28,9 @@ export interface LocalOrder {
   number: string;
   deviceId: string;
   cashier: string;
+  orderType: OrderType;
+  tableName: string;
+  note: string;
   items: OrderItem[];
   subtotal: number;
   discount: number;
@@ -43,4 +49,10 @@ export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   cash: 'Tiền mặt',
   card: 'Thẻ',
   transfer: 'Chuyển khoản',
+};
+
+export const ORDER_TYPE_LABEL: Record<OrderType, string> = {
+  dine_in: 'Tại quán',
+  takeaway: 'Mang về',
+  delivery: 'Giao hàng',
 };

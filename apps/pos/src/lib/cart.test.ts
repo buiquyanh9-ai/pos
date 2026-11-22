@@ -4,7 +4,7 @@ import { fold } from './format';
 import type { Product } from './types';
 
 const p = (id: string, price: number): Product => ({
-  id, sku: id, barcode: null, name: id, category: '', price, stock: 10, active: true, updatedAt: '',
+  id, sku: id, barcode: null, name: id, category: '', imageUrl: null, price, stock: 10, active: true, updatedAt: '',
 });
 
 describe('cart', () => {
@@ -14,7 +14,7 @@ describe('cart', () => {
     c = cartReducer(c, { type: 'add', product: p('b', 500), qty: 3 });
     expect(c.lines).toHaveLength(2);
     expect(totalsOf(c)).toMatchObject({ subtotal: 3500, total: 3500, count: 5 });
-    c = cartReducer(c, { type: 'setQty', productId: 'a', qty: 0 });
+    c = cartReducer(c, { type: 'setQty', key: 'a::', qty: 0 });
     expect(c.lines.map((l) => l.productId)).toEqual(['b']);
   });
 
@@ -23,10 +23,26 @@ describe('cart', () => {
     c = cartReducer(c, { type: 'add', product: p('b', 9000) });
     c = cartReducer(c, { type: 'discount', amount: 99999 });
     expect(c.discount).toBe(10000);
-    c = cartReducer(c, { type: 'remove', productId: 'b' });
+    c = cartReducer(c, { type: 'remove', key: 'b::' });
     expect(c.discount).toBe(1000);
     c = cartReducer(c, { type: 'discount', amount: -5 });
     expect(c.discount).toBe(0);
+  });
+
+  it('keeps same product with different notes as separate lines and merges on equal note', () => {
+    let c = cartReducer(emptyCart, { type: 'add', product: p('a', 1000) });
+    c = cartReducer(c, { type: 'add', product: p('a', 1000), note: 'Ít đá' });
+    expect(c.lines).toHaveLength(2);
+    c = cartReducer(c, { type: 'setNote', key: 'a::', note: 'Ít đá' });
+    expect(c.lines).toHaveLength(1);
+    expect(c.lines[0]).toMatchObject({ qty: 2, note: 'Ít đá' });
+  });
+
+  it('clears table when switching away from dine-in', () => {
+    let c = cartReducer(emptyCart, { type: 'table', tableName: ' B5 ' });
+    expect(c.tableName).toBe('B5');
+    c = cartReducer(c, { type: 'orderType', orderType: 'takeaway' });
+    expect(c.tableName).toBe('');
   });
 
   it('suggests cash amounts >= total, ascending, exact first', () => {

@@ -1,7 +1,7 @@
 import type { ReceiptData } from '../hardware/types';
 import { getDrawer, getPrinter } from '../hardware';
 import type { PosSettings } from './settings';
-import type { LocalOrder } from './types';
+import { ORDER_TYPE_LABEL, type LocalOrder } from './types';
 import { notify } from './notify';
 
 export function buildReceipt(o: LocalOrder, s: PosSettings): ReceiptData {
@@ -13,7 +13,10 @@ export function buildReceipt(o: LocalOrder, s: PosSettings): ReceiptData {
     createdAt: o.createdAt,
     cashier: o.cashier || undefined,
     deviceName: s.deviceName,
-    lines: o.items.map((i) => ({ name: i.name, qty: i.qty, price: i.price, lineTotal: i.lineTotal })),
+    orderTypeLabel: ORDER_TYPE_LABEL[o.orderType],
+    tableName: o.tableName || undefined,
+    note: o.note || undefined,
+    lines: o.items.map((i) => ({ name: i.name, qty: i.qty, price: i.price, lineTotal: i.lineTotal, ...(i.note ? { note: i.note } : {}) })),
     subtotal: o.subtotal,
     discount: o.discount,
     total: o.total,

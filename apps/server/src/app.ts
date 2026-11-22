@@ -22,6 +22,7 @@ function productDto(r: Row) {
     barcode: (r.barcode as string | null) ?? null,
     name: r.name as string,
     category: r.category as string,
+    imageUrl: (r.image_url as string | null) ?? null,
     price: Number(r.price),
     stock: Number(r.stock),
     active: Number(r.active) === 1,
@@ -31,7 +32,7 @@ function productDto(r: Row) {
 
 function orderDto(db: DB, r: Row) {
   const items = db
-    .prepare('SELECT product_id, name, price, qty, line_total FROM order_items WHERE order_id = ? ORDER BY id')
+    .prepare('SELECT product_id, name, price, qty, line_total, note FROM order_items WHERE order_id = ? ORDER BY id')
     .all(r.id as string)
     .map((i) => ({
       productId: (i.product_id as string | null) ?? null,
@@ -39,12 +40,16 @@ function orderDto(db: DB, r: Row) {
       price: Number(i.price),
       qty: Number(i.qty),
       lineTotal: Number(i.line_total),
+      note: (i.note as string) ?? '',
     }));
   return {
     id: r.id as string,
     number: r.number as string,
     deviceId: r.device_id as string,
     cashier: r.cashier as string,
+    orderType: r.order_type as string,
+    tableName: r.table_name as string,
+    note: r.note as string,
     subtotal: Number(r.subtotal),
     discount: Number(r.discount),
     total: Number(r.total),
@@ -112,6 +117,7 @@ export function createApp({ db, apiKey }: AppOptions) {
       barcode: str(body.barcode, 'barcode', { optional: true, max: 64 }),
       name: partial ? str(body.name, 'name', { optional: true }) : reqStr(body.name, 'name'),
       category: str(body.category, 'category', { optional: true, max: 64 }),
+      image_url: str(body.imageUrl, 'imageUrl', { optional: true, max: 2000 }),
       price: int(body.price, 'price', { optional: partial, min: 0, max: MAX_MONEY }),
       stock: int(body.stock, 'stock', { optional: true, min: -1_000_000, max: 1_000_000_000 }),
       active: body.active === undefined ? undefined : body.active ? 1 : 0,
@@ -132,9 +138,9 @@ export function createApp({ db, apiKey }: AppOptions) {
     try {
       tx(db, () => {
         db.prepare(
-          `INSERT INTO products (id, sku, barcode, name, category, price, stock, active, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(id, f.sku ?? null, f.barcode ?? null, f.name!, f.category ?? '', f.price!, f.stock ?? 0, f.active ?? 1, ts);
+          `INSERT INTO products (id, sku, barcode, name, category, image_url, price, stock, active, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).run(id, f.sku ?? null, f.barcode ?? null, f.name!, f.category ?? '', f.image_url ?? null, f.price!, f.stock ?? 0, f.active ?? 1, ts);
         logChange(db, 'product', id, 'upsert');
       });
     } catch (err) {
@@ -205,6 +211,7 @@ export function createApp({ db, apiKey }: AppOptions) {
         price,
         qty,
         lineTotal: price * qty,
+        note: str(it.note, `items[${i}].note`, { optional: true, max: 200 }) ?? '',
       };
     });
     const subtotal = items.reduce((s, it) => s + it.lineTotal, 0);
@@ -221,20 +228,24 @@ export function createApp({ db, apiKey }: AppOptions) {
     const deviceId = reqStr(b.deviceId, 'deviceId', 64);
     const number = reqStr(b.number, 'number', 32);
     const cashier = str(b.cashier, 'cashier', { optional: true, max: 64 }) ?? '';
+    const orderType = str(b.orderType, 'orderType', { optional: true, max: 16 }) ?? 'dine_in';
+    if (!['dine_in', 'takeaway', 'delivery'].includes(orderType)) throw bad('orderType must be dine_in, takeaway or delivery');
+    const tableName = str(b.tableName, 'tableName', { optional: true, max: 32 }) ?? '';
+    const note = str(b.note, 'note', { optional: true, max: 500 }) ?? '';
 
     tx(db, () => {
       db.prepare(
-        `INSERT INTO orders (id, number, device_id, cashier, subtotal, discount, total, payment_method, paid, change_due, status, created_at, received_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`,
-      ).run(id, number, deviceId, cashier, subtotal, discount, total, paymentMethod, paid, change, createdAt, now());
+        `INSERT INTO orders (id, number, device_id, cashier, order_type, table_name, note, subtotal, discount, total, payment_method, paid, change_due, status, created_at, received_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`,
+      ).run(id, number, deviceId, cashier, orderType, tableName, note, subtotal, discount, total, paymentMethod, paid, change, createdAt, now());
       const insItem = db.prepare(
-        'INSERT INTO order_items (order_id, product_id, name, price, qty, line_total) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO order_items (order_id, product_id, name, price, qty, line_total, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
       );
       // Stock may go negative: an offline sale already happened and must be recorded.
       const decStock = db.prepare('UPDATE products SET stock = stock - ?, updated_at = ? WHERE id = ?');
       const ts = now();
       for (const it of items) {
-        insItem.run(id, it.productId, it.name, it.price, it.qty, it.lineTotal);
+        insItem.run(id, it.productId, it.name, it.price, it.qty, it.lineTotal, it.note);
         if (it.productId && decStock.run(it.qty, ts, it.productId).changes) logChange(db, 'product', it.productId, 'upsert');
       }
       logChange(db, 'order', id, 'upsert');

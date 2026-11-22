@@ -9,6 +9,7 @@ export interface ReceiptLine {
   qty: number;
   price: number; // unit price, integer VND
   lineTotal: number; // integer VND
+  note?: string; // e.g. "Ít đá"
 }
 
 export interface ReceiptData {
@@ -19,6 +20,10 @@ export interface ReceiptData {
   createdAt: string; // ISO timestamp
   cashier?: string;
   deviceName?: string;
+  /** Already localized, e.g. "Tại quán" / "Mang về". */
+  orderTypeLabel?: string;
+  tableName?: string;
+  note?: string;
   lines: ReceiptLine[];
   subtotal: number;
   discount: number;

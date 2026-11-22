@@ -4,7 +4,7 @@ import { dateTime, localDayRange, money, time } from '../lib/format';
 import { getState, retryOrder, usePos, voidOrder } from '../lib/store';
 import { printReceipt } from '../lib/receipt';
 import { notify } from '../lib/notify';
-import { PAYMENT_LABEL, type LocalOrder } from '../lib/types';
+import { ORDER_TYPE_LABEL, PAYMENT_LABEL, type LocalOrder, type OrderType } from '../lib/types';
 import { Modal } from '../components/Modal';
 
 const SYNC_LABEL: Record<LocalOrder['sync'], string> = { pending: 'Chờ gửi', synced: 'Đã đồng bộ', rejected: 'Bị từ chối' };
@@ -14,10 +14,14 @@ export function OrdersScreen() {
   const connection = usePos((s) => s.connection);
   const [selected, setSelected] = useState<LocalOrder | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [scope, setScope] = useState<'today' | 'all'>('today');
+  const [status, setStatus] = useState('all');
+  const [type, setType] = useState<'all' | OrderType>('all');
 
   const { from, to } = localDayRange();
   const today = useMemo(() => orders.filter((o) => o.createdAt >= from && o.createdAt < to), [orders, from, to]);
   const localRevenue = today.filter((o) => o.status === 'completed').reduce((s, o) => s + o.total, 0);
+  const visibleOrders = useMemo(() => orders.filter((o) => (scope === 'all' || (o.createdAt >= from && o.createdAt < to)) && (status === 'all' || (o.status === 'voided' ? 'voided' : o.sync) === status) && (type === 'all' || o.orderType === type)), [orders, scope, status, type, from, to]);
 
   useEffect(() => {
     if (connection !== 'online') return;
@@ -30,6 +34,7 @@ export function OrdersScreen() {
 
   return (
     <div className="orders">
+      <div className="page-title"><div><span className="eyebrow">QUẢN LÝ</span><h1>Đơn hàng</h1></div><span className="soft-count">{visibleOrders.length} đơn</span></div>
       <div className="stats">
         <div className="stat">
           <span className="muted">Đơn hôm nay (máy này)</span>
@@ -44,12 +49,13 @@ export function OrdersScreen() {
           <strong>{summary ? money(summary.revenue) : '—'}</strong>
         </div>
       </div>
+      <div className="orders-toolbar"><div className="filter-segment"><button className={scope === 'today' ? 'active' : ''} onClick={() => setScope('today')}>Hôm nay</button><button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>Tất cả</button></div><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">Mọi trạng thái</option><option value="synced">Đã đồng bộ</option><option value="pending">Chờ gửi</option><option value="voided">Đã huỷ</option></select><select value={type} onChange={(e) => setType(e.target.value as 'all' | OrderType)}><option value="all">Mọi loại đơn</option>{(Object.keys(ORDER_TYPE_LABEL) as OrderType[]).map((key) => <option key={key} value={key}>{ORDER_TYPE_LABEL[key]}</option>)}</select></div>
 
-      {orders.length === 0 ? (
+      {visibleOrders.length === 0 ? (
         <div className="empty">Chưa có đơn hàng nào.</div>
       ) : (
         <ul className="order-list">
-          {orders.map((o) => (
+          {visibleOrders.map((o) => (
             <li key={o.id}>
               <button className="order-row" onClick={() => setSelected(o)}>
                 <span className="order-num">{o.number}</span>
@@ -73,19 +79,20 @@ function OrderDetail({ order: o, onClose }: { order: LocalOrder; onClose: () => 
   return (
     <Modal title={`Đơn ${o.number}`} onClose={onClose}>
       <p className="muted">
-        {dateTime(o.createdAt)} · {PAYMENT_LABEL[o.paymentMethod]}
+        {dateTime(o.createdAt)} · {PAYMENT_LABEL[o.paymentMethod]} · {ORDER_TYPE_LABEL[o.orderType]} {o.tableName && `· Bàn ${o.tableName}`}
         {o.cashier && ` · ${o.cashier}`}
       </p>
       <ul className="detail-lines">
         {o.items.map((i, idx) => (
           <li key={idx}>
             <span>
-              {i.qty} × {i.name}
+              {i.qty} × {i.name}{i.note && <small className="line-note">* {i.note}</small>}
             </span>
             <span>{money(i.lineTotal)}</span>
           </li>
         ))}
       </ul>
+      {o.note && <div className="detail-note"><strong>Ghi chú</strong><span>{o.note}</span></div>}
       <div className="row">
         <span>Tạm tính</span>
         <span>{money(o.subtotal)}</span>

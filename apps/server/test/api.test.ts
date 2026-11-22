@@ -127,3 +127,18 @@ test('device heartbeat', async () => {
   const d = await call('GET', '/devices');
   assert.equal(d.body.devices[0].name, 'Quầy 1');
 });
+
+test('order type, table, notes and product image round-trip', async () => {
+  const r = await call('POST', '/orders', order('o-fnb', {
+    orderType: 'takeaway', tableName: 'B5', note: 'Giao nhanh',
+    items: [{ productId: 'p-cf-sua', name: 'Cà phê sữa', price: 25000, qty: 1, note: 'Ít đá' }],
+    discount: 0,
+  }));
+  assert.equal(r.status, 201);
+  assert.equal(r.body.orderType, 'takeaway');
+  assert.equal(r.body.tableName, 'B5');
+  assert.equal(r.body.items[0].note, 'Ít đá');
+  assert.equal((await call('POST', '/orders', order('o-fnb2', { orderType: 'boat' }))).status, 400);
+  const p = await call('POST', '/products', { name: 'Img', price: 1, imageUrl: 'https://example.com/a.jpg' });
+  assert.equal(p.body.imageUrl, 'https://example.com/a.jpg');
+});
