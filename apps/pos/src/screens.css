@@ -101,3 +101,17 @@
 .kitchen-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
 .kitchen-card h3 { margin: 0; }
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+/* ---- payment method tiles & badges (orders) */
+.pay-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.pay-tile { display: grid; grid-template-columns: auto 1fr; grid-template-areas: 'dot label' 'dot total' 'dot sub'; column-gap: 10px; align-items: center; text-align: left; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.pay-tile.active { border-color: var(--primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent); }
+.pay-tile .pay-dot { grid-area: dot; width: 12px; height: 40px; border-radius: 6px; }
+.pay-tile-label { grid-area: label; color: var(--muted); font-weight: 600; }
+.pay-tile strong { grid-area: total; font-size: 1.3rem; }
+.pay-tile small { grid-area: sub; color: var(--muted); }
+.pay-dot.pay-cash, .pay-badge.pay-cash { background: #16a34a; }
+.pay-dot.pay-transfer, .pay-badge.pay-transfer { background: #2563eb; }
+.pay-dot.pay-qr, .pay-badge.pay-qr { background: #7c3aed; }
+.pay-dot.pay-card, .pay-badge.pay-card { background: #64748b; }
+.pay-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; color: #fff; font-size: 0.78rem; font-weight: 700; }

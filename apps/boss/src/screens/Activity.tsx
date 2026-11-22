@@ -114,10 +114,12 @@ function OpenBills({ bills, onSwitch }: { bills: OpenOrder<OpenCart>[] | null; o
 }
 
 function PaidOrders({ openCount, onSwitch }: { openCount: number; onSwitch: () => void }) {
+  const [pay, setPay] = useState<string>('all');
   const { data, error, loading } = useRemote((c) => api.activity(c));
   const [filter, setFilter] = useState<Filter>('all');
   const [open, setOpen] = useState<ApiOrder | null>(null);
-  const orders = (data?.orders ?? []).filter((o) => filter === 'all' || o.orderType === filter);
+  const orders = (data?.orders ?? []).filter((o) => (filter === 'all' || o.orderType === filter) && (pay === 'all' || o.paymentMethod === pay));
+  const methods = [...new Set(['cash', 'transfer', ...(data?.orders ?? []).map((o) => o.paymentMethod)])];
   const completed = orders.filter((o) => o.status !== 'voided');
   const total = completed.reduce((s, o) => s + o.total - o.refundAmount, 0);
 
@@ -148,6 +150,13 @@ function PaidOrders({ openCount, onSwitch }: { openCount: number; onSwitch: () =
           {(['all', 'dine_in', 'takeaway', 'delivery'] as Filter[]).map((f) => (
             <button key={f} className={filter === f ? 'chip on' : 'chip'} onClick={() => setFilter(f)}>
               {f === 'all' ? 'Tất cả' : ORDER_TYPE_LABEL[f]}
+            </button>
+          ))}
+        </div>
+        <div className="chips scroll-x">
+          {['all', ...methods].map((m) => (
+            <button key={m} className={pay === m ? 'chip on' : 'chip'} onClick={() => setPay(m)}>
+              {m === 'all' ? 'Mọi thanh toán' : PAYMENT_LABEL[m as PaymentMethod] ?? m}
             </button>
           ))}
         </div>
@@ -191,7 +200,7 @@ function PaidOrders({ openCount, onSwitch }: { openCount: number; onSwitch: () =
   );
 }
 
-function OrderSheet({ order: o, onClose }: { order: ApiOrder; onClose: () => void }) {
+export function OrderSheet({ order: o, onClose }: { order: ApiOrder; onClose: () => void }) {
   return (
     <Sheet title={`Đơn ${o.number}`} onClose={onClose}>
       <p className="muted">

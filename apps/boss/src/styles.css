@@ -244,3 +244,15 @@ body { background: var(--bg); }
 .login-brand { color: #2563eb; }
 .login-brand svg { color: #2563eb; }
 .login-brand svg path { stroke: #f97316; }
+
+/* ---- payment method tiles (Claude) */
+.pay-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pay-tile { display: grid; grid-template-columns: auto 1fr; grid-template-areas: 'dot label' 'dot total' 'dot sub'; column-gap: 10px; align-items: center; text-align: left; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); min-height: 84px; }
+.pay-tile .pay-dot { grid-area: dot; width: 10px; height: 44px; border-radius: 5px; }
+.pay-tile-label { grid-area: label; color: var(--muted); font-size: 0.82rem; font-weight: 600; }
+.pay-tile strong { grid-area: total; font-size: 1.15rem; }
+.pay-tile small { grid-area: sub; color: var(--accent); font-size: 0.74rem; font-weight: 600; }
+.pay-dot.pay-cash { background: #16a34a; }
+.pay-dot.pay-transfer { background: #2563eb; }
+.pay-dot.pay-qr { background: #7c3aed; }
+.pay-dot.pay-card { background: #64748b; }

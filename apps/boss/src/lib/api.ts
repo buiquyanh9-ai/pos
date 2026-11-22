@@ -118,6 +118,8 @@ export const api = {
       `/activity${q({ limit: 50, before })}`,
     ),
   openOrders: (c: Conn) => request<{ openOrders: OpenOrder<OpenCart>[] }>(c, 'GET', '/open-orders'),
+  orders: (c: Conn, p: { from: string; to: string; paymentMethod?: string }) =>
+    request<{ orders: ApiOrder[] }>(c, 'GET', `/orders${q({ from: p.from, to: p.to, paymentMethod: p.paymentMethod, limit: 1000 })}`),
   order: (c: Conn, id: string) => request<ApiOrder>(c, 'GET', `/orders/${encodeURIComponent(id)}`),
   inventory: (c: Conn) => request<{ items: InventoryItem[] }>(c, 'GET', '/inventory/items'),
   moves: (c: Conn, p: { itemId?: string; type?: string; limit?: number }) => request<{ moves: StockMove[] }>(c, 'GET', `/inventory/moves${q(p)}`),

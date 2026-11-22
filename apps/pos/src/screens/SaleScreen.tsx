@@ -4,7 +4,7 @@ import { fold, imageSrc, money } from '../lib/format';
 import { closeOpenOrder, commitSale, getState, refreshOpenOrders, saveOpenOrder, usePos } from '../lib/store';
 import { openDrawer, printReceipt } from '../lib/receipt';
 import { notify } from '../lib/notify';
-import { PAYMENT_LABEL, type LocalOrder, type PaymentMethod, type Product } from '../lib/types';
+import { COUNTER_PAYMENT_METHODS, PAYMENT_LABEL, type LocalOrder, type PaymentMethod, type Product } from '../lib/types';
 import { NoteDialog, OptionPicker } from '../components/OptionPicker';
 import { Modal, Numpad } from '../components/Modal';
 import { TablePicker } from '../components/TablePicker';
@@ -386,7 +386,7 @@ function PaymentDialog({ total, items, onPay, onClose }: { total: number; items:
   return (
     <Modal title={`Thanh toán ${money(total)}`} onClose={onClose} wide>
       <div className="payment-modal"><div className="payment-summary"><span className="eyebrow">TÓM TẮT ĐƠN</span>{items.map((item) => <div className="summary-line" key={item.key}><span>{item.qty} × {item.name}{item.options.length ? ` (${optionsLabel(item.options)})` : ''}</span><strong>{money(item.qty * item.price)}</strong></div>)}<div className="summary-total"><span>Tổng thanh toán</span><strong>{money(total)}</strong></div></div><div className="payment-controls"><div className="segmented">
-        {(Object.keys(PAYMENT_LABEL) as PaymentMethod[]).map((m) => (
+        {COUNTER_PAYMENT_METHODS.map((m) => (
           <button key={m} className={m === method ? 'seg active' : 'seg'} onClick={() => setMethod(m)}>
             {PAYMENT_LABEL[m]}
           </button>

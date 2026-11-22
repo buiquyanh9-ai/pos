@@ -137,6 +137,9 @@ export const api = {
       paid: o.paid,
       createdAt: o.createdAt,
     }),
+  /** Orders stored on the server (all terminals). */
+  orders: (c: ApiConfig, p: { from?: string; to?: string; paymentMethod?: string; limit?: number }) =>
+    request<{ orders: (Omit<LocalOrder, 'sync'> & { statusReason: string })[] }>(c, 'GET', `/orders${q({ ...p, limit: p.limit ?? 500 })}`),
   voidOrder: (c: ApiConfig, id: string, reason: string) =>
     request<{ status: string }>(c, 'POST', `/orders/${encodeURIComponent(id)}/void`, { reason }),
   refundOrder: (c: ApiConfig, id: string, body: { reason: string; restock?: boolean; shiftId?: string }) =>

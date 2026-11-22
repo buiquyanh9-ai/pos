@@ -384,3 +384,10 @@ test('repeated wrong PINs lock the account for a while', async () => {
   resetLoginGuard();
   assert.equal((await call('POST', '/auth/login', { username: 'kho', pin: '2222' }, null)).status, 200);
 });
+
+test('orders can be filtered by payment method', async () => {
+  const cash = (await call('GET', '/orders?paymentMethod=cash&limit=1000')).body.orders;
+  assert.ok(cash.length > 0 && cash.every((o: { paymentMethod: string }) => o.paymentMethod === 'cash'));
+  const tr = (await call('GET', '/orders?paymentMethod=transfer&limit=1000')).body.orders;
+  assert.ok(tr.every((o: { paymentMethod: string }) => o.paymentMethod === 'transfer'));
+});

@@ -4,13 +4,15 @@ import { dateTime, localDayRange, money, time } from '../lib/format';
 import { getState, refundOrder, remote, retryOrder, usePos, voidOrder } from '../lib/store';
 import { printReceipt } from '../lib/receipt';
 import { notify } from '../lib/notify';
-import { ORDER_STATUS_LABEL, ORDER_TYPE_LABEL, PAYMENT_LABEL, type LocalOrder, type OrderType, type Summary } from '../lib/types';
+import { COUNTER_PAYMENT_METHODS, ORDER_STATUS_LABEL, ORDER_TYPE_LABEL, PAYMENT_LABEL, type LocalOrder, type OrderType, type PaymentMethod, type Summary } from '../lib/types';
 import { Modal } from '../components/Modal';
 
 const SYNC_LABEL: Record<LocalOrder['sync'], string> = { pending: 'Chờ gửi', synced: 'Đã đồng bộ', rejected: 'Bị từ chối' };
 
 export function OrdersScreen() {
-  const orders = usePos((s) => s.orders);
+  const localOrders = usePos((s) => s.orders);
+  const [serverOrders, setServerOrders] = useState<LocalOrder[] | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
   const connection = usePos((s) => s.connection);
   const shift = usePos((s) => s.shift);
   const [selected, setSelected] = useState<LocalOrder | null>(null);
@@ -18,11 +20,33 @@ export function OrdersScreen() {
   const [scope, setScope] = useState<'today' | 'all'>('today');
   const [status, setStatus] = useState('all');
   const [type, setType] = useState<'all' | OrderType>('all');
+  const [pay, setPay] = useState<'all' | PaymentMethod>('all');
 
   const { from, to } = localDayRange();
+  // Server orders (every terminal) + this terminal's orders not yet uploaded.
+  useEffect(() => {
+    if (connection !== 'online') return;
+    const range = scope === 'today' ? { from, to } : { from: new Date(Date.now() - 30 * 86400_000).toISOString() };
+    remote(api.orders, range)
+      .then((r) => setServerOrders(r.orders.map((o) => ({ ...o, sync: 'synced' as const }))))
+      .catch(() => setServerOrders(null));
+  }, [connection, scope, from, to, localOrders, reloadTick]);
+  const orders = useMemo(() => {
+    if (!serverOrders) return localOrders;
+    const ids = new Set(serverOrders.map((o) => o.id));
+    const unsent = localOrders.filter((o) => o.sync !== 'synced' && !ids.has(o.id));
+    return [...unsent, ...serverOrders].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, [serverOrders, localOrders]);
   const today = useMemo(() => orders.filter((o) => o.createdAt >= from && o.createdAt < to), [orders, from, to]);
   const localRevenue = today.filter((o) => o.status === 'completed').reduce((s, o) => s + o.total, 0);
-  const visibleOrders = useMemo(() => orders.filter((o) => (scope === 'all' || (o.createdAt >= from && o.createdAt < to)) && (status === 'all' || (o.status !== 'completed' ? o.status : o.sync) === status) && (type === 'all' || o.orderType === type)), [orders, scope, status, type, from, to]);
+  const visibleOrders = useMemo(() => orders.filter((o) => (scope === 'all' || (o.createdAt >= from && o.createdAt < to)) && (status === 'all' || (o.status !== 'completed' ? o.status : o.sync) === status) && (type === 'all' || o.orderType === type) && (pay === 'all' || o.paymentMethod === pay)), [orders, scope, status, type, pay, from, to]);
+  // Totals per payment method for the current scope (paid orders only; refunds subtracted).
+  const scoped = orders.filter((o) => scope === 'all' || (o.createdAt >= from && o.createdAt < to));
+  const methods: PaymentMethod[] = [...new Set<PaymentMethod>([...COUNTER_PAYMENT_METHODS, ...scoped.map((o) => o.paymentMethod)])];
+  const byMethod = methods.map((m) => {
+    const list = scoped.filter((o) => o.paymentMethod === m && o.status === 'completed');
+    return { method: m, count: list.length, total: list.reduce((s, o) => s + o.total, 0) };
+  });
 
   // Server figures for the current shift (cashiers may only see their shift's report).
   useEffect(() => {
@@ -37,11 +61,11 @@ export function OrdersScreen() {
       <div className="page-title"><div><span className="eyebrow">QUẢN LÝ</span><h1>Đơn hàng</h1></div><span className="soft-count">{visibleOrders.length} đơn</span></div>
       <div className="stats">
         <div className="stat">
-          <span className="muted">Đơn hôm nay (máy này)</span>
+          <span className="muted">Đơn hôm nay</span>
           <strong>{today.length}</strong>
         </div>
         <div className="stat">
-          <span className="muted">Doanh thu (máy này)</span>
+          <span className="muted">Doanh thu hôm nay (đã trừ huỷ)</span>
           <strong>{money(localRevenue)}</strong>
         </div>
         <div className="stat">
@@ -49,7 +73,17 @@ export function OrdersScreen() {
           <strong>{summary ? money(summary.netRevenue) : '—'}</strong>
         </div>
       </div>
-      <div className="orders-toolbar"><div className="filter-segment"><button className={scope === 'today' ? 'active' : ''} onClick={() => setScope('today')}>Hôm nay</button><button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>Tất cả</button></div><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">Mọi trạng thái</option><option value="synced">Đã đồng bộ</option><option value="pending">Chờ gửi</option><option value="voided">Đã huỷ</option><option value="refunded">Đã hoàn tiền</option></select><select value={type} onChange={(e) => setType(e.target.value as 'all' | OrderType)}><option value="all">Mọi loại đơn</option>{(Object.keys(ORDER_TYPE_LABEL) as OrderType[]).map((key) => <option key={key} value={key}>{ORDER_TYPE_LABEL[key]}</option>)}</select></div>
+      <div className="pay-tiles">
+        {byMethod.map((b) => (
+          <button key={b.method} className={pay === b.method ? 'pay-tile active' : 'pay-tile'} onClick={() => setPay(pay === b.method ? 'all' : b.method)} title="Bấm để lọc các đơn theo phương thức này">
+            <span className={`pay-dot pay-${b.method}`} aria-hidden="true" />
+            <span className="pay-tile-label">{PAYMENT_LABEL[b.method]}</span>
+            <strong>{money(b.total)}</strong>
+            <small>{b.count} đơn · {scope === 'today' ? 'hôm nay' : '30 ngày'} · bấm để lọc</small>
+          </button>
+        ))}
+      </div>
+      <div className="orders-toolbar"><div className="filter-segment"><button className={scope === 'today' ? 'active' : ''} onClick={() => setScope('today')}>Hôm nay</button><button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>Tất cả</button></div><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">Mọi trạng thái</option><option value="synced">Đã đồng bộ</option><option value="pending">Chờ gửi</option><option value="voided">Đã huỷ</option><option value="refunded">Đã hoàn tiền</option></select><select value={pay} onChange={(e) => setPay(e.target.value as 'all' | PaymentMethod)}><option value="all">Mọi phương thức</option>{methods.map((m) => <option key={m} value={m}>{PAYMENT_LABEL[m]}</option>)}</select><select value={type} onChange={(e) => setType(e.target.value as 'all' | OrderType)}><option value="all">Mọi loại đơn</option>{(Object.keys(ORDER_TYPE_LABEL) as OrderType[]).map((key) => <option key={key} value={key}>{ORDER_TYPE_LABEL[key]}</option>)}</select></div>
 
       {visibleOrders.length === 0 ? (
         <div className="empty">Chưa có đơn hàng nào.</div>
@@ -59,7 +93,10 @@ export function OrdersScreen() {
             <li key={o.id}>
               <button className="order-row" onClick={() => setSelected(o)}>
                 <span className="order-num">{o.number}</span>
-                <span className="muted">{time(o.createdAt)}</span>
+                <span className="muted">
+                  {time(o.createdAt)} · <span className={`pay-badge pay-${o.paymentMethod}`}>{PAYMENT_LABEL[o.paymentMethod]}</span>
+                  {o.tableName && ` · Bàn ${o.tableName}`}
+                </span>
                 <span className={`pill pill-${o.status !== 'completed' ? 'voided' : o.sync}`}>{o.status !== 'completed' ? ORDER_STATUS_LABEL[o.status] : SYNC_LABEL[o.sync]}</span>
                 <strong className="order-total">{money(o.total)}</strong>
               </button>
@@ -68,7 +105,13 @@ export function OrdersScreen() {
         </ul>
       )}
 
-      {selected && <OrderDetail order={orders.find((o) => o.id === selected.id) ?? selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <OrderDetail
+          order={orders.find((o) => o.id === selected.id) ?? selected}
+          onClose={() => setSelected(null)}
+          onChanged={() => setReloadTick((n) => n + 1)}
+        />
+      )}
     </div>
   );
 }
@@ -76,7 +119,7 @@ export function OrdersScreen() {
 const VOID_REASONS = ['Nhập nhầm món', 'Khách huỷ trước khi làm', 'Trùng đơn', 'Sai phương thức thanh toán'];
 const REFUND_REASONS = ['Món lỗi / không đạt', 'Khách đổi ý', 'Làm sai món', 'Giao hàng thất bại'];
 
-function OrderDetail({ order: o, onClose }: { order: LocalOrder; onClose: () => void }) {
+function OrderDetail({ order: o, onClose, onChanged }: { order: LocalOrder; onClose: () => void; onChanged: () => void }) {
   const [action, setAction] = useState<'void' | 'refund' | null>(null);
   const [reason, setReason] = useState('');
   const [restock, setRestock] = useState(false);
@@ -88,6 +131,8 @@ function OrderDetail({ order: o, onClose }: { order: LocalOrder; onClose: () => 
       else await refundOrder(o.id, reason, restock);
       notify(action === 'void' ? `Đã huỷ đơn ${o.number}` : `Đã hoàn ${money(o.total)} cho đơn ${o.number}`, 'success');
       setAction(null);
+      onChanged();
+      onClose();
     } catch (err) {
       notify(err instanceof Error ? err.message : String(err), 'error');
     } finally {

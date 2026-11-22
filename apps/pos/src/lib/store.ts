@@ -247,9 +247,9 @@ export function commitSale(sale: NewSale): LocalOrder {
 }
 
 async function changeOrderStatus(id: string, kind: 'void' | 'refund', reason: string, restock = false) {
+  // Orders from other terminals are not in local storage; they are on the server by definition.
   const o = state.orders.find((x) => x.id === id);
-  if (!o) throw new Error('Không tìm thấy đơn');
-  if (o.sync !== 'synced') throw new Error('Đơn chưa đồng bộ lên máy chủ, chưa thể huỷ/hoàn tiền');
+  if (o && o.sync !== 'synced') throw new Error('Đơn chưa đồng bộ lên máy chủ, chưa thể huỷ/hoàn tiền');
   if (!reason.trim()) throw new Error('Vui lòng nhập lý do');
   if (kind === 'void') await remote(api.voidOrder, id, reason.trim());
   else await remote(api.refundOrder, id, { reason: reason.trim(), restock, shiftId: state.shift?.id });

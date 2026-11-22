@@ -168,6 +168,7 @@ export function salesRoutes(db: DB) {
     eq('status', req.query.status, 'status');
     eq('order_type', req.query.orderType, 'orderType');
     eq('cashier_id', req.query.cashierId, 'cashierId');
+    eq('payment_method', req.query.paymentMethod, 'paymentMethod');
     const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 1000);
     params.push(limit);
     const rows = db

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { ORDER_TYPE_LABEL, PAYMENT_LABEL, money, moneyShort, qty, type OrderType, type PaymentMethod } from '@shopflow/shared';
-import { api } from '../lib/api';
+import { api, type ApiOrder } from '../lib/api';
+import { OrderSheet } from './Activity';
+import { timeLocal, dateTimeLocal } from '../lib/range';
 import { PRESETS, customRange, isoDateLocal, presetRange, rangeDays, type Preset, type Range } from '../lib/range';
 import { useRemote } from '../lib/store';
 import { BarChart, RankBars } from '../components/Charts';
@@ -12,6 +14,7 @@ export function Reports() {
   const [preset, setPreset] = useState<Preset | 'custom'>('today');
   const [custom, setCustom] = useState<Range | null>(null);
   const [picking, setPicking] = useState(false);
+  const [payDetail, setPayDetail] = useState<string | null>(null);
   const [section, setSection] = useState<Section>('revenue');
   const range = preset === 'custom' && custom ? custom : presetRange(preset === 'custom' ? 'today' : preset);
   const { data: s, error, loading } = useRemote((c) => api.summary(c, range.from, range.to), [range.from, range.to]);
@@ -141,6 +144,21 @@ export function Reports() {
           </>
         )}
         {s && section === 'payment' && (
+          <div className="pay-tiles">
+            {[...new Set(['cash', 'transfer', ...s.byPayment.map((p) => p.method)])].map((m) => {
+              const b = s.byPayment.find((p) => p.method === m);
+              return (
+                <button key={m} className="pay-tile" onClick={() => setPayDetail(m)}>
+                  <span className={`pay-dot pay-${m}`} aria-hidden="true" />
+                  <span className="pay-tile-label">{PAYMENT_LABEL[m as PaymentMethod] ?? m}</span>
+                  <strong>{money(b?.revenue ?? 0)}</strong>
+                  <small>{b?.orders ?? 0} đơn · bấm để xem chi tiết ›</small>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {s && section === 'payment' && (
           <Card title="Doanh thu theo phương thức thanh toán">
             <RankBars rows={s.byPayment.map((x) => ({ key: x.method, name: PAYMENT_LABEL[x.method as PaymentMethod] ?? x.method, value: x.revenue, sub: `${x.orders} đơn` }))} />
             <p className="muted small">Đã trừ hoàn tiền theo phương thức gốc của đơn.</p>
@@ -152,6 +170,7 @@ export function Reports() {
           </Card>
         )}
       </div>
+      {payDetail && <PaymentOrdersSheet method={payDetail} from={range.from} to={range.to} label={range.label} onClose={() => setPayDetail(null)} />}
       {picking && (
         <CustomRangeSheet
           onClose={() => setPicking(false)}
@@ -163,6 +182,42 @@ export function Reports() {
         />
       )}
     </div>
+  );
+}
+
+/** Every order paid with one method in the selected range; tap an order for its details. */
+function PaymentOrdersSheet({ method, from, to, label, onClose }: { method: string; from: string; to: string; label: string; onClose: () => void }) {
+  const { data, error, loading } = useRemote((c) => api.orders(c, { from, to, paymentMethod: method }), [method, from, to]);
+  const [open, setOpen] = useState<ApiOrder | null>(null);
+  const paid = (data?.orders ?? []).filter((o) => o.status !== 'voided');
+  const total = paid.reduce((s, o) => s + o.total - o.refundAmount, 0);
+  if (open) return <OrderSheet order={open} onClose={() => setOpen(null)} />;
+  return (
+    <Sheet title={`${PAYMENT_LABEL[method as PaymentMethod] ?? method} · ${label}`} onClose={onClose}>
+      <p className="sheet-total">
+        {paid.length} đơn <strong>{money(total)}</strong>
+      </p>
+      <Loading error={error} loading={loading && !data} />
+      <ul className="list">
+        {data?.orders.map((o) => (
+          <li key={o.id}>
+            <button className="order-row" onClick={() => setOpen(o)}>
+              <span className="grow">
+                <strong className={o.status === 'voided' ? 'strike' : ''}>{money(o.total)}</strong>
+                <span className="muted small">
+                  {o.number}
+                  {o.tableName && ` · Bàn ${o.tableName}`} · {o.cashier} · {dateTimeLocal(o.createdAt)}
+                </span>
+              </span>
+              {o.status !== 'completed' && <span className={`tag tag-${o.status}`}>{o.status === 'refunded' ? 'Hoàn tiền' : 'Huỷ'}</span>}
+              <span className="muted small">{timeLocal(o.createdAt)}</span>
+              <span className="chev">›</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {data && !data.orders.length && <p className="empty">Không có đơn nào</p>}
+    </Sheet>
   );
 }
 
