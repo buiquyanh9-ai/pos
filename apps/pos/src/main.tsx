@@ -5,6 +5,7 @@ import { App } from './App';
 import { startSync } from './lib/store';
 import './styles.css';
 import './screens.css';
+import './sale.css';
 
 startSync();
 

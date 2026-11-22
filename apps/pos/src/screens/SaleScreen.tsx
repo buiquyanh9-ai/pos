@@ -1,12 +1,13 @@
 import { useMemo, useState, type Dispatch } from 'react';
 import { cashSuggestions, optionsLabel, qtyOfProduct, toOrderItems, totalsOf, type Cart, type CartAction } from '../lib/cart';
-import { fold, money } from '../lib/format';
+import { fold, imageSrc, money } from '../lib/format';
 import { closeOpenOrder, commitSale, getState, refreshOpenOrders, saveOpenOrder, usePos } from '../lib/store';
 import { openDrawer, printReceipt } from '../lib/receipt';
 import { notify } from '../lib/notify';
-import { ORDER_TYPE_LABEL, PAYMENT_LABEL, type LocalOrder, type OrderType, type PaymentMethod, type Product } from '../lib/types';
+import { PAYMENT_LABEL, type LocalOrder, type PaymentMethod, type Product } from '../lib/types';
 import { NoteDialog, OptionPicker } from '../components/OptionPicker';
 import { Modal, Numpad } from '../components/Modal';
+import { TablePicker } from '../components/TablePicker';
 
 interface Props {
   cart: Cart;
@@ -15,28 +16,117 @@ interface Props {
   setQuery: (value: string) => void;
 }
 
+const COLS = 5;
+
+/** Lay products out on a 5-column grid using gridRow/gridCol from the menu file; empty slots stay empty. */
+function layout(products: Product[]): (Product | null)[][] {
+  const rows: (Product | null)[][] = [];
+  const free: Product[] = [];
+  for (const p of products) {
+    if (p.gridRow == null || p.gridCol == null || p.gridCol >= COLS) {
+      free.push(p);
+      continue;
+    }
+    while (rows.length <= p.gridRow) rows.push(Array(COLS).fill(null));
+    if (rows[p.gridRow][p.gridCol]) free.push(p);
+    else rows[p.gridRow][p.gridCol] = p;
+  }
+  for (const p of free) {
+    let placed = false;
+    for (const r of rows) {
+      const i = r.indexOf(null);
+      if (i >= 0 && rows.indexOf(r) === rows.length - 1) {
+        r[i] = p;
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      const r: (Product | null)[] = Array(COLS).fill(null);
+      r[0] = p;
+      rows.push(r);
+    }
+  }
+  return rows;
+}
+
+function ProductTile({ p, qty, onTap }: { p: Product; qty: number; onTap: () => void }) {
+  const [broken, setBroken] = useState(false);
+  const src = imageSrc(p.imageUrl);
+  const out = p.stock !== null && p.stock <= 0;
+  return (
+    <button className={`pos-tile${qty ? ' in-bill' : ''}${out ? ' out' : ''}`} onClick={onTap} title={p.name}>
+      <span className="pos-photo">
+        {src && !broken ? (
+          <img src={src} alt="" loading="lazy" onError={() => setBroken(true)} />
+        ) : (
+          <span className="pos-letter">{p.name.replace(/^(Cơm (trắng|đảo)|Nước)\s+/i, '').slice(0, 1).toUpperCase()}</span>
+        )}
+        {qty > 0 && <span className="pos-qty">{qty}</span>}
+        {out && <span className="pos-out">Hết</span>}
+        {p.stock !== null && p.stock > 0 && p.stock <= 5 && <span className="pos-low">Còn {p.stock}</span>}
+      </span>
+      <span className="pos-name">{p.name}</span>
+      <span className="pos-price">{money(p.price)}</span>
+    </button>
+  );
+}
+
 export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
   const products = usePos((s) => s.products);
+  const categories = usePos((s) => s.categories);
   const tables = usePos((s) => s.tables);
   const openOrders = usePos((s) => s.openOrders);
-  const [showOpen, setShowOpen] = useState(false);
+  const catNames = useMemo(() => {
+    const fromCats = categories.map((c) => c.name).filter((n) => products.some((p) => p.category === n));
+    return fromCats.length ? fromCats : [...new Set(products.map((p) => p.category).filter(Boolean))];
+  }, [categories, products]);
+  const [category, setCategory] = useState<string>('');
+  const activeCat = catNames.includes(category) ? category : catNames[0] ?? '';
+  const [tablePicker, setTablePicker] = useState(false);
+  const [showBill, setShowBill] = useState(false); // narrow screens: bill as a sheet
+  const [paying, setPaying] = useState(false);
+  const [discounting, setDiscounting] = useState(false);
+  const [done, setDone] = useState<LocalOrder | null>(null);
+  const [picking, setPicking] = useState<Product | null>(null);
+  const [noteFor, setNoteFor] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [saving, setSaving] = useState(false);
-  const busyTable = (name: string) => openOrders.find((o) => o.tableName === name && o.orderType === 'dine_in' && o.id !== cart.openId);
+
+  const q = fold(query.trim());
+  const searching = q.length > 0;
+  const rows = useMemo(() => {
+    if (searching) {
+      const hits = products.filter((p) => fold(p.name).includes(q) || p.sku?.toLowerCase().includes(q) || p.barcode?.includes(q));
+      const out: (Product | null)[][] = [];
+      for (let i = 0; i < hits.length; i += COLS) out.push([...hits.slice(i, i + COLS), ...Array(Math.max(0, COLS - hits.slice(i, i + COLS).length)).fill(null)]);
+      return out;
+    }
+    return layout(products.filter((p) => p.category === activeCat));
+  }, [products, activeCat, searching, q]);
+
+  const t = totalsOf(cart);
+  const add = (p: Product) => {
+    if (p.optionGroups.length) return setPicking(p);
+    if (p.stock !== null && p.stock <= 0) notify(`${p.name}: kho đã hết theo sổ sách`, 'error');
+    dispatch({ type: 'add', product: p });
+  };
+
   const resume = (id: string) => {
     const o = getState().openOrders.find((x) => x.id === id);
     if (!o) return;
     if (cart.lines.length && cart.openId !== id) return notify('Lưu hoặc thanh toán đơn đang làm trước khi mở đơn khác', 'error');
     dispatch({ type: 'load', cart: { ...o.cart, openId: o.id, openVersion: o.version } });
-    setShowOpen(false);
+    setTablePicker(false);
   };
+
   const park = async () => {
     setSaving(true);
     try {
       const saved = await saveOpenOrder(cart);
-      notify(`Đã lưu đơn ${saved.tableName || ORDER_TYPE_LABEL[saved.orderType as OrderType] || ''}`, 'success');
+      notify(saved.tableName ? `Đã lưu đơn bàn ${saved.tableName}` : 'Đã lưu đơn mang đi', 'success');
       dispatch({ type: 'clear' });
-      setShowCart(false);
+      setShowBill(false);
     } catch (err) {
       notify(err instanceof Error ? err.message : String(err), 'error');
       if (String(err).includes('máy khác')) void refreshOpenOrders();
@@ -44,126 +134,61 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
       setSaving(false);
     }
   };
-  const [picking, setPicking] = useState<Product | null>(null);
-  const [noteFor, setNoteFor] = useState<string | null>(null);
-  const add = (p: Product) => {
-    if (p.optionGroups.length) return setPicking(p);
-    if (p.stock === 0) notify(`${p.name}: kho đã hết nguyên liệu theo sổ sách`, 'error');
-    dispatch({ type: 'add', product: p });
-  };
-  const areas = [...new Set(tables.map((t) => t.area))];
-  const [category, setCategory] = useState<string>('');
-  const [showCart, setShowCart] = useState(false); // narrow screens: cart as a sheet
-  const [paying, setPaying] = useState(false);
-  const [discounting, setDiscounting] = useState(false);
-  const [done, setDone] = useState<LocalOrder | null>(null);
 
-  const categories = useMemo(() => [...new Set(products.map((p) => p.category).filter(Boolean))], [products]);
-  const visible = useMemo(() => {
-    const q = fold(query.trim());
-    return products.filter(
-      (p) =>
-        (!category || p.category === category) &&
-        (!q || fold(p.name).includes(q) || p.sku?.toLowerCase().includes(q) || p.barcode?.includes(q)),
-    );
-  }, [products, query, category]);
-
-  const t = totalsOf(cart);
-  const qtyOf = (id: string) => qtyOfProduct(cart, id);
+  const tableLabel = cart.tableName ? `Bàn ${cart.tableName}` : cart.orderType === 'dine_in' ? 'Chọn bàn' : 'Mang đi';
 
   return (
-    <div className="sale">
-      <section className="catalog">
-        <div className="catalog-heading">
-          <div>
-            <span className="eyebrow">BÁN HÀNG</span>
-            <h1>{cart.openId ? `Sửa đơn ${cart.tableName || ''}` : 'Tạo đơn hàng mới'}</h1>
-          </div>
-          <div className="heading-actions">
-            <button className="ghost-action" onClick={() => (void refreshOpenOrders().catch(() => undefined), setShowOpen(true))}>
-              Đơn đang mở <span className="count">{openOrders.length}</span>
-            </button>
-            <button className="ghost-action" onClick={() => (cart.lines.length && !cart.openId ? notify('Đơn hiện tại chưa lưu: bấm Lưu đơn hoặc Xoá trước', 'error') : dispatch({ type: 'clear' }))}>
-              Đơn mới <span>＋</span>
+    <div className="pos-sale">
+      <section className="pos-menu">
+        {searching && (
+          <div className="pos-search-note">
+            Kết quả tìm “{query}” ·{' '}
+            <button className="link" onClick={() => setQuery('')}>
+              Xoá tìm kiếm
             </button>
           </div>
+        )}
+        <div className="pos-grid">
+          {rows.map((r, i) =>
+            r.map((p, j) => (p ? <ProductTile key={p.id} p={p} qty={qtyOfProduct(cart, p.id)} onTap={() => add(p)} /> : <div key={`e-${i}-${j}`} className="pos-tile empty" />)),
+          )}
+          {!products.length && <p className="empty pos-empty">Chưa có món. Kiểm tra kết nối máy chủ.</p>}
         </div>
-        <div className="chips">
-          <button className={!category ? 'chip active' : 'chip'} onClick={() => setCategory('')}>
-            Tất cả
-          </button>
-          {categories.map((c) => (
-            <button key={c} className={category === c ? 'chip active' : 'chip'} onClick={() => setCategory(c)}>
+        <nav className="pos-cats" role="tablist">
+          {catNames.map((c) => (
+            <button key={c} role="tab" aria-selected={!searching && c === activeCat} className={!searching && c === activeCat ? 'pos-cat active' : 'pos-cat'} onClick={() => (setCategory(c), setQuery(''))}>
               {c}
             </button>
           ))}
-        </div>
-        {products.length === 0 ? (
-          <div className="empty">Chưa có sản phẩm. Kiểm tra kết nối máy chủ trong Cài đặt.</div>
-        ) : (
-          <div className="grid">
-            {visible.map((p) => {
-              const q = qtyOf(p.id);
-              return (
-                <button key={p.id} className={q ? 'product in-cart' : 'product'} onClick={() => add(p)}>
-                  {q > 0 && <span className="product-qty">{q}</span>}
-                  {p.imageUrl ? <img className="product-image" src={p.imageUrl} alt="" /> : <span className={`product-image product-letter tone-${(p.category || 'x').length % 5}`}>{p.name.slice(0, 1)}</span>}
-                  <span className="product-name">{p.name}</span>
-                  <span className="product-price">{money(p.price)}</span>
-                  {p.stock !== null && <span className={p.stock <= 0 ? 'product-stock out' : 'product-stock'}>{p.stock <= 0 ? 'Hết hàng' : `Tồn: ${p.stock}`}</span>}
-                </button>
-              );
-            })}
-          </div>
-        )}
+          <button className="pos-cat tables" onClick={() => setTablePicker(true)}>
+            Sơ đồ bàn
+            {openOrders.length > 0 && <span className="pos-count">{openOrders.length}</span>}
+          </button>
+        </nav>
       </section>
 
-      <aside className={showCart ? 'cart open' : 'cart'}>
-        <div className="cart-head"><div><span className="eyebrow">ĐƠN HÀNG HIỆN TẠI</span><h2>Giỏ hàng ({t.count})</h2></div>
-          <button className="icon-btn only-narrow" aria-label="Đóng giỏ hàng" onClick={() => setShowCart(false)}>
+      <aside className={showBill ? 'pos-bill open' : 'pos-bill'}>
+        <div className="pos-bill-head">
+          <button className="pos-table-btn" onClick={() => setTablePicker(true)}>
+            <span>{tableLabel}</span>
+            <span aria-hidden="true">›</span>
+          </button>
+          <button className="icon-btn only-narrow" aria-label="Đóng hoá đơn" onClick={() => setShowBill(false)}>
             ✕
           </button>
         </div>
-        <div className="order-types">{(Object.keys(ORDER_TYPE_LABEL) as OrderType[]).map((type) => <button key={type} className={cart.orderType === type ? 'order-type active' : 'order-type'} onClick={() => dispatch({ type: 'orderType', orderType: type })}>{ORDER_TYPE_LABEL[type]}</button>)}</div>
-        {cart.orderType === 'dine_in' && (
-          <div className="table-picker">
-            <label>Chọn bàn{cart.tableName ? `: ${cart.tableName}` : ''}</label>
-            {areas.map((area) => (
-              <div key={area} className="table-area">
-                {areas.length > 1 && <small className="muted">{area}</small>}
-                <div className="table-chips">
-                  {tables
-                    .filter((t) => t.area === area)
-                    .map((t) => (
-                      <button
-                        key={t.id}
-                        className={`table-chip${cart.tableName === t.name ? ' active' : ''}${busyTable(t.name) ? ' busy' : ''}`}
-                        title={busyTable(t.name) ? 'Bàn đang có đơn: chạm để mở' : undefined}
-                        onClick={() => {
-                          const b = busyTable(t.name);
-                          if (b) return resume(b.id);
-                          dispatch({ type: 'table', tableName: cart.tableName === t.name ? '' : t.name });
-                        }}
-                      >
-                        {t.name}
-                      </button>
-                    ))}
-                </div>
-              </div>
-            ))}
-            {!tables.length && <input value={cart.tableName} onChange={(e) => dispatch({ type: 'table', tableName: e.target.value })} placeholder="Nhập số bàn" />}
-          </div>
-        )}
-        <ul className="cart-lines">
-          {cart.lines.length === 0 && <li className="empty">Chạm vào sản phẩm để thêm</li>}
+        {cart.openId && <div className="pos-bill-badge">Đơn đang mở · sửa xong bấm “Lưu đơn” hoặc thanh toán</div>}
+
+        <ul className="pos-lines">
+          {cart.lines.length === 0 && <li className="pos-lines-empty">Chạm vào món để thêm vào hoá đơn</li>}
           {cart.lines.map((l) => (
-            <li key={l.key} className="cart-line">
-              <div className="cart-line-info">
-                <button className="cart-line-name" onClick={() => setNoteFor(l.key)} title="Chạm để ghi chú">{l.name}</button>
-                <span className="muted">{money(l.price)}{l.options.length ? ` · ${optionsLabel(l.options)}` : ''}</span>
-                {l.note && <small className="line-note">* {l.note}</small>}
-              </div>
-              <div className="stepper">
+            <li key={l.key} className="pos-line">
+              <button className="pos-line-main" onClick={() => setNoteFor(l.key)} title="Chạm để ghi chú">
+                <span className="pos-line-name">{l.name}</span>
+                {(l.options.length > 0 || l.note) && <span className="pos-line-note">{[optionsLabel(l.options), l.note].filter(Boolean).join(' · ')}</span>}
+                <span className="pos-line-unit">{money(l.price)}</span>
+              </button>
+              <div className="pos-stepper">
                 <button aria-label="Giảm" onClick={() => dispatch({ type: 'setQty', key: l.key, qty: l.qty - 1 })}>
                   −
                 </button>
@@ -172,44 +197,71 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
                   +
                 </button>
               </div>
-              <span className="cart-line-total">{money(l.price * l.qty)}</span>
+              <strong className="pos-line-total">{money(l.price * l.qty)}</strong>
             </li>
           ))}
         </ul>
-        <div className="cart-foot"><label className="order-note"><span>Ghi chú đơn hàng</span><input value={cart.note} onChange={(e) => dispatch({ type: 'orderNote', note: e.target.value })} placeholder="Ví dụ: giao trước 12h..." /></label>
-          <div className="row">
-            <span>Tạm tính</span>
-            <span>{money(t.subtotal)}</span>
-          </div>
-          <div className="row">
+
+        <div className="pos-bill-foot">
+          <div className="pos-foot-row">
+            <label className="pos-switch">
+              <input
+                type="checkbox"
+                checked={cart.orderType !== 'dine_in'}
+                onChange={(e) => dispatch({ type: 'orderType', orderType: e.target.checked ? 'takeaway' : 'dine_in' })}
+              />
+              <span className="pos-switch-ui" aria-hidden="true" />
+              Mang đi
+            </label>
             <button className="link" disabled={!cart.lines.length} onClick={() => setDiscounting(true)}>
-              Giảm giá
+              Giảm giá{t.discount ? `: −${money(t.discount)}` : ''}
             </button>
-            <span>{t.discount ? `−${money(t.discount)}` : '0đ'}</span>
           </div>
-          <div className="row total">
-            <span>Tổng</span>
-            <span>{money(t.total)}</span>
+          <input className="pos-note" value={cart.note} onChange={(e) => dispatch({ type: 'orderNote', note: e.target.value })} placeholder="Ghi chú hoá đơn…" />
+          <div className="pos-total">
+            <span>Tổng ({t.count} món)</span>
+            <strong>{money(t.total)}</strong>
           </div>
-          <div className="cart-actions">
-            <button className="btn secondary" disabled={!cart.lines.length && !cart.openId} onClick={() => (cart.openId ? setCancelling(true) : dispatch({ type: 'clear' }))}>
+          <div className="pos-actions">
+            <button className="pos-act" disabled={!cart.lines.length && !cart.openId} onClick={() => (cart.openId ? setCancelling(true) : dispatch({ type: 'clear' }))}>
               {cart.openId ? 'Huỷ đơn' : 'Xoá'}
             </button>
-            <button className="btn secondary" disabled={!cart.lines.length || saving} onClick={() => void park()}>
-              {cart.openId ? 'Cập nhật đơn' : 'Lưu đơn'}
+            <button className="pos-act" disabled={!cart.lines.length || saving} onClick={() => void park()}>
+              {cart.openId ? 'Cập nhật' : 'Lưu đơn'}
             </button>
-            <button className="btn primary big" disabled={!cart.lines.length} onClick={() => setPaying(true)}>
-              Thanh toán
+            <button className="pos-pay" disabled={!cart.lines.length} onClick={() => setPaying(true)}>
+              THANH TOÁN
             </button>
           </div>
         </div>
       </aside>
 
-      <button className="cart-bar only-narrow" onClick={() => setShowCart(true)}>
-        <span>Giỏ hàng ({t.count})</span>
+      <button className="pos-bill-bar only-narrow" onClick={() => setShowBill(true)}>
+        <span>
+          {tableLabel} · {t.count} món
+        </span>
         <strong>{money(t.total)}</strong>
       </button>
 
+      {tablePicker && (
+        <TablePicker
+          tables={tables}
+          openOrders={openOrders}
+          current={cart.tableName}
+          currentOpenId={cart.openId}
+          onClose={() => setTablePicker(false)}
+          onOpenBill={resume}
+          onPick={(name) => {
+            dispatch({ type: 'orderType', orderType: 'dine_in' });
+            dispatch({ type: 'table', tableName: name });
+            setTablePicker(false);
+          }}
+          onTakeaway={() => {
+            dispatch({ type: 'orderType', orderType: 'takeaway' });
+            setTablePicker(false);
+          }}
+        />
+      )}
       {discounting && (
         <DiscountDialog
           subtotal={t.subtotal}
@@ -232,7 +284,7 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
               if (cart.openId) void closeOpenOrder(cart.openId);
               dispatch({ type: 'clear' });
               setPaying(false);
-              setShowCart(false);
+              setShowBill(false);
               setDone(order);
               const s = getState().settings;
               void printReceipt(order, s);
@@ -244,23 +296,6 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
         />
       )}
       {done && <DoneDialog order={done} onClose={() => setDone(null)} />}
-      {showOpen && (
-        <Modal title={`Đơn đang mở (${openOrders.length})`} onClose={() => setShowOpen(false)} wide>
-          {openOrders.length === 0 && <p className="empty">Không có đơn nào đang mở</p>}
-          <div className="open-grid">
-            {openOrders.map((o) => (
-              <button key={o.id} className={o.id === cart.openId ? 'open-card active' : 'open-card'} onClick={() => resume(o.id)}>
-                <strong>{o.tableName || ORDER_TYPE_LABEL[o.orderType as OrderType] || 'Đơn'}</strong>
-                <span className="open-total">{money(o.total)}</span>
-                <small className="muted">
-                  {o.itemCount} món · {o.cashierName ?? ''} · {new Date(o.updatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                </small>
-                {o.note && <small className="muted">{o.note}</small>}
-              </button>
-            ))}
-          </div>
-        </Modal>
-      )}
       {cancelling && cart.openId && (
         <CancelOpenDialog
           onClose={() => setCancelling(false)}
@@ -277,27 +312,27 @@ export function SaleScreen({ cart, dispatch, query, setQuery }: Props) {
           product={picking}
           onClose={() => setPicking(null)}
           onAdd={(options, note, qty) => {
-            if (picking.stock === 0) notify(`${picking.name}: kho đã hết nguyên liệu theo sổ sách`, 'error');
             dispatch({ type: 'add', product: picking, options, note, qty });
             setPicking(null);
           }}
         />
       )}
-      {noteFor && (() => {
-        const line = cart.lines.find((l) => l.key === noteFor);
-        if (!line) return null;
-        return (
-          <NoteDialog
-            title={line.name}
-            initial={line.note}
-            onClose={() => setNoteFor(null)}
-            onSave={(note) => {
-              dispatch({ type: 'setNote', key: line.key, note });
-              setNoteFor(null);
-            }}
-          />
-        );
-      })()}
+      {noteFor &&
+        (() => {
+          const line = cart.lines.find((l) => l.key === noteFor);
+          if (!line) return null;
+          return (
+            <NoteDialog
+              title={line.name}
+              initial={line.note}
+              onClose={() => setNoteFor(null)}
+              onSave={(note) => {
+                dispatch({ type: 'setNote', key: line.key, note });
+                setNoteFor(null);
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }

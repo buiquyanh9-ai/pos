@@ -110,7 +110,7 @@ export function App() {
   const needsShift = tab === 'sale' && !shift;
 
   return (
-    <div className="app">
+    <div className={tab === 'sale' && !needsShift ? 'app sale-mode' : 'app'}>
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark">S</span>
