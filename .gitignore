@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.log
+.env
+apps/server/data/
+apps/pos/android/app/build/
+apps/pos/android/.gradle/
+apps/pos/android/local.properties
+apps/pos/android/app/src/main/assets/public/
+*.apk
+*.keystore
+.idea/
