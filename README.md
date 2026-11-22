@@ -45,6 +45,17 @@ npm run serve        # builds POS + Boss, then serves everything on port 4000
   `New-NetFirewallRule -DisplayName "ShopFlow 4000" -Direction Inbound -Protocol TCP -LocalPort 4000 -Action Allow -Profile Private`.
   Also check that the Wi-Fi network is set to *Private*.
 
+### Menu file: `product/z.product`
+
+The shop's menu is maintained in `c:\VISUAL\pos\product\z.product`, a Markdown file next to the repo.
+- The backend imports it at startup and again every time the file is saved. Products, prices, categories, the 5-slots-per-row layout and tables 001-024 all come from it.
+- Photos go in `product/product_img/<name>.jpg|png|webp`. The name is the product name without accents, joined with `-`, e.g. `com-trang-suon.jpg`. Takeaway items reuse the dine-in photo.
+- Check the result without changing anything: `npm run import-menu -w apps/server`. It prints the grid and any warnings.
+
+Stock rules applied from the file:
+- **Exact stock:** sườn, xá xíu, gà, bò, cá kho, bottled drinks. One unit per portion sold, shared by dine-in and takeaway.
+- **Estimate stock:** rice, vegetables, tea, takeaway boxes, shown as "còn khoảng X". Rice, vegetables and tea are issued to the kitchen at the start of the shift and counted at the end (*Kho → Bếp*). Each takeaway rice portion or extra meat/fish uses 1 box. Damaged boxes are recorded with *Ghi hao hụt*.
+
 ### Demo accounts (sample data only)
 
 | Role | Username | Password (Boss) | PIN (POS) |
