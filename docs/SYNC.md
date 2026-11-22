@@ -10,6 +10,7 @@ All endpoints are under `/api`.
   - Boss sends `{ username, password }`; POS sends `{ username, pin }`.
   - Response: `{ token, expiresAt, user }`. Sessions last 30 days, so a POS terminal stays logged in through offline periods.
 - Send `Authorization: Bearer <token>`. `GET /api/events` also accepts `?token=`, because EventSource cannot set headers.
+- After 5 wrong passwords/PINs for a username (or from one address) within 5 minutes, login returns 429 until the window ends.
 - `GET /auth/staff` is public and lists staff names for the POS PIN screen. It returns no secrets.
 - Optional `x-api-key: <SHOPFLOW_API_KEY>` acts as the owner, for integrations and scripts.
 
@@ -85,6 +86,7 @@ Owner only: `GET/POST/PUT /users` · `GET /audit`
 | `GET /notifications` · `POST /notifications/read {ids \| "all"}` | |
 | `GET/PUT /notifications/prefs` | Per-user on/off per notification type |
 | `POST /notifications/push-tokens {token, platform}` | FCM device token from the phone app |
+| `GET/PUT/DELETE /open-orders/:id` | Unpaid table bills. `PUT` with `version` for optimistic locking (409 if another terminal changed it), one open bill per table. `DELETE` with `{reason}` = cancelled (audited) |
 | `GET /sync/changes?since=<cursor>` | Cursor-based change feed of products and orders, for incremental sync |
 
 *Summary fields (`/reports/summary`):* `orderCount`, `itemsSold`, `grossSales`, `discounts`, `refunds`, `netRevenue`, `avgOrderValue`, `voidedCount`/`voidedAmount`, `costOfGoods`, `grossProfit`, `costCoverage`, `byHour[24]`, `byDay`, `byPayment`, `byOrderType`, `byCashier`, `byCategory`, `topProducts`, plus `previous`/`change` when `compare=1`.

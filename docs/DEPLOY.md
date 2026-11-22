@@ -29,7 +29,13 @@ Use this when the owner only checks Boss on the shop Wi-Fi, or through a VPN or 
 
 ## Backups
 
-The database is a single SQLite file in WAL mode. Back it up at least daily while the server is running:
+The database is a single SQLite file in WAL mode. The built-in command makes a consistent copy while the server keeps running (`VACUUM INTO`), and keeps the last 30 copies (`BACKUP_KEEP`):
+
+```powershell
+npm run backup -w apps/server -- E:ackup\shopflow
+```
+
+Run it daily with Windows Task Scheduler: action `npm.cmd`, arguments `run backup -w apps/server -- E:ackup\shopflow`, start in the repo folder. Alternatively, with the sqlite3 CLI:
 
 ```powershell
 sqlite3 D:\shopflow\shopflow.db ".backup 'E:\backup\shopflow-%DATE:~-4%%DATE:~3,2%%DATE:~0,2%.db'"

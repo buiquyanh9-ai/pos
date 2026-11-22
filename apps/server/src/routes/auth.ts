@@ -4,6 +4,27 @@ import { type DB, audit, now } from '../db.ts';
 import { ROLES, allow, bearer, createSession, hashSecret, revokeSession, userDto, verifySecret, type Role } from '../auth.ts';
 import { HttpError, bad, reqStr, str } from '../validate.ts';
 
+// Brute-force guard: a 4-digit PIN has only 10,000 values. After MAX_FAILS wrong attempts for a
+// username (or from one client address) within WINDOW_MS, further attempts are refused until it expires.
+const MAX_FAILS = 5;
+const WINDOW_MS = 5 * 60_000;
+const fails = new Map<string, { n: number; until: number }>();
+function locked(key: string) {
+  const f = fails.get(key);
+  if (!f) return 0;
+  if (Date.now() > f.until) {
+    fails.delete(key);
+    return 0;
+  }
+  return f.n >= MAX_FAILS ? Math.ceil((f.until - Date.now()) / 1000) : 0;
+}
+function recordFail(key: string) {
+  const f = fails.get(key);
+  const live = f && Date.now() <= f.until;
+  fails.set(key, { n: live ? f!.n + 1 : 1, until: live ? f!.until : Date.now() + WINDOW_MS });
+}
+export const resetLoginGuard = () => fails.clear();
+
 /** Public auth routes (mounted before the auth middleware). */
 export function publicAuthRoutes(db: DB) {
   const r = Router();
@@ -20,12 +41,17 @@ export function publicAuthRoutes(db: DB) {
     const password = str(b.password, 'password', { optional: true, max: 200 });
     const pin = str(b.pin, 'pin', { optional: true, max: 12 });
     if (!password && !pin) throw bad('password or pin is required');
+    const keys = [`u:${username}`, `ip:${req.ip ?? ''}`];
+    const wait = Math.max(...keys.map(locked));
+    if (wait) throw new HttpError(429, `Nhập sai quá nhiều lần. Thử lại sau ${Math.ceil(wait / 60)} phút`);
     const u = db.prepare('SELECT * FROM users WHERE username = ? AND active = 1').get(username);
     const ok = u && (password ? verifySecret(password, u.password_hash as string) : verifySecret(pin!, u.pin_hash as string));
     if (!u || !ok) {
       audit(db, null, 'login.failed', 'user', username);
+      keys.forEach(recordFail);
       throw new HttpError(401, 'Sai tên đăng nhập hoặc mật khẩu/PIN');
     }
+    fails.delete(keys[0]);
     const client = str(b.client, 'client', { optional: true, max: 64 }) ?? '';
     const session = createSession(db, u.id as string, client);
     audit(db, u.id as string, 'login', 'user', u.id as string, { client });

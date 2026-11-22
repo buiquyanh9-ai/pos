@@ -10,3 +10,4 @@ apps/pos/android/app/src/main/assets/public/
 *.apk
 *.keystore
 .idea/
+backups/

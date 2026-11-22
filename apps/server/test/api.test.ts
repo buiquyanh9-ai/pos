@@ -5,6 +5,7 @@ import type { Server } from 'node:http';
 import { openDb } from '../src/db.ts';
 import { createApp } from '../src/app.ts';
 import { seedIfEmpty } from '../src/seed.ts';
+import { resetLoginGuard } from '../src/routes/auth.ts';
 
 let server: Server;
 let base: string;
@@ -369,4 +370,12 @@ test('open orders: one per table, optimistic locking, visible on dashboard, dele
   assert.equal((await call('GET', '/open-orders')).body.openOrders[0].cart.lines[0].qty, 2);
   assert.equal((await call('DELETE', '/open-orders/oo-1', {}, 'cashier')).status, 204);
   assert.equal((await call('GET', '/open-orders')).body.openOrders.length, 0);
+});
+
+test('repeated wrong PINs lock the account for a while', async () => {
+  resetLoginGuard();
+  for (let i = 0; i < 5; i++) assert.equal((await call('POST', '/auth/login', { username: 'kho', pin: '0000' }, null)).status, 401);
+  assert.equal((await call('POST', '/auth/login', { username: 'kho', pin: '2222' }, null)).status, 429);
+  resetLoginGuard();
+  assert.equal((await call('POST', '/auth/login', { username: 'kho', pin: '2222' }, null)).status, 200);
 });
