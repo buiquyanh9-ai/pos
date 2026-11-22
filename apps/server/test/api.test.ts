@@ -281,3 +281,55 @@ test('service API key acts as owner', async () => {
   const res = await fetch(`${base}/users`, { headers: { 'x-api-key': 'svc-key' } });
   assert.equal(res.status, 200);
 });
+
+// ---------------------------------------------------------------- CLAUDE.md §4: the mandatory end-to-end flow
+test('E2E: POS sale -> stock -> Boss revenue -> low-stock alert -> stocktake -> purchase approve/receive -> stock on both apps', async () => {
+  await call('PUT', '/notifications/prefs', { prefs: [{ type: 'stock.low', enabled: true }] }); // an earlier test turned it off
+  // Make "Bánh mì ổ" the bottleneck: leave just above its minimum (15).
+  const start = await item('i-banh-mi');
+  await call('POST', '/inventory/items/i-banh-mi/adjust', { qty: 16, reason: 'E2E setup' }, 'stock');
+  const dashBefore = (await call('GET', '/dashboard')).body.today;
+
+  // 1. Cashier opens a shift and sells 2 bánh mì on the POS.
+  const shift = (await call('POST', '/shifts/open', { deviceId: 'pos-e2e', openingCash: 0 }, 'cashier')).body;
+  const sale = order({ deviceId: 'pos-e2e', shiftId: shift.id, items: [{ productId: 'p-banh-mi', name: 'Bánh mì thịt', price: 25000, qty: 2 }], paid: 50000 });
+  assert.equal((await call('POST', '/orders', sale, 'cashier')).status, 201);
+
+  // 2. Backend stored it and deducted stock (16 - 2 = 14, below min 15).
+  assert.equal((await item('i-banh-mi')).qty, 14);
+
+  // 3. Boss dashboard shows the new revenue and order.
+  const dashAfter = (await call('GET', '/dashboard')).body.today;
+  assert.equal(dashAfter.netRevenue - dashBefore.netRevenue, 50000);
+  assert.equal(dashAfter.orderCount - dashBefore.orderCount, 1);
+
+  // 4. Low-stock alert was raised for the owner.
+  const notes = (await call('GET', '/notifications')).body.notifications;
+  assert.ok(notes.some((n: { type: string; data: { itemId?: string } }) => n.type === 'stock.low' && n.data?.itemId === 'i-banh-mi'));
+
+  // 5. End of shift: staff counts 13 (1 missing) and records the variance.
+  const st = await call('POST', '/inventory/stocktakes', { shiftId: shift.id, lines: [{ itemId: 'i-banh-mi', counted: 13, reason: 'Hỏng 1 ổ' }] }, 'stock');
+  assert.equal(st.body.lines[0].diff, -1);
+  await call('POST', `/shifts/${shift.id}/close`, { countedCash: 50000 }, 'cashier');
+  const report = (await call('GET', `/shifts/${shift.id}/report`)).body;
+  assert.equal(report.shift.cashDifference, 0);
+  assert.equal(report.stocktakes.length, 1);
+
+  // 6. Owner reviews and the stock clerk proposes a purchase; owner approves on the phone.
+  const sug = (await call('GET', '/purchases/suggestions', undefined, 'stock')).body.lines.find((l: { itemId: string }) => l.itemId === 'i-banh-mi');
+  assert.ok(sug && sug.qty > 0);
+  const pr = (await call('POST', '/purchases', { lines: [{ itemId: 'i-banh-mi', qty: sug.qty }] }, 'stock')).body;
+  assert.equal(pr.status, 'pending');
+  assert.equal((await call('POST', `/purchases/${pr.id}/approve`, {})).body.status, 'approved');
+
+  // 7. Goods received -> stock updated, visible to POS (product availability) and Boss (inventory).
+  await call('POST', `/purchases/${pr.id}/receive`, {}, 'stock');
+  const after = await item('i-banh-mi');
+  assert.equal(after.qty, 13 + sug.qty);
+  assert.equal(after.low, false);
+  assert.ok((await product('p-banh-mi')).stock >= 13 + sug.qty - 1);
+  // History shows every step.
+  const types = (await call('GET', '/inventory/moves?itemId=i-banh-mi')).body.moves.map((m: { type: string }) => m.type);
+  for (const t of ['adjust', 'sale', 'count', 'import']) assert.ok(types.includes(t), `missing ${t}`);
+  void start;
+});
