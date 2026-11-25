@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { type DB, getSetting, logChange, now, setSetting, slug, tx } from './db.ts';
 import { moveStock } from './inventory.ts';
 import { publish } from './events.ts';
+import { productImagePath } from './productImages.ts';
 
 // Menu source of truth: the shop's own description file (c:\VISUAL\pos\product\z.product, Markdown).
 // Format understood (see the file):
@@ -19,7 +20,7 @@ export interface MenuProduct {
   price: number;
   row: number;
   col: number;
-  image: string; // photo base name in product_img (takeaway items share the dine-in photo)
+  image: string; // folder/name in product_img (takeaway items share the dine-in photo)
 }
 
 export interface ParsedMenu {
@@ -77,7 +78,7 @@ export function parseMenu(md: string): ParsedMenu {
       continue;
     }
     const s = slug(text);
-    products.push({ id: `p-${s}`, name: text, category, price, row, col, image: s.replace(/-mang-ve$/, '') });
+    products.push({ id: `p-${s}`, name: text, category, price, row, col, image: productImagePath(s.replace(/-mang-ve$/, '')) });
   }
   return { categories, products, warnings };
 }
@@ -99,6 +100,12 @@ export const MENU_ITEMS: { id: string; name: string; unit: string; kind: 'ingred
   { id: 'i-rau', name: 'Rau', unit: 'kg', kind: 'ingredient', tracking: 'estimate', min: 4, defaultIssue: 4, sample: 12 },
   { id: 'i-tra', name: 'Trà', unit: 'g', kind: 'ingredient', tracking: 'estimate', min: 200, defaultIssue: 100, sample: 1000 },
   { id: 'i-hop-mang-ve', name: 'Hộp mang về', unit: 'hộp', kind: 'ingredient', tracking: 'estimate', min: 50, sample: 300 },
+  // Đồ ăn kèm: fries and corn are counted per portion; eggs (shared with cơm đảo) and sausages (by bag) are estimates.
+  { id: 'i-khoai-tay-chien', name: 'Khoai tây chiên', unit: 'phần', kind: 'ingredient', tracking: 'exact', min: 10, sample: 30 },
+  { id: 'i-ngo-chien', name: 'Ngô chiên', unit: 'phần', kind: 'ingredient', tracking: 'exact', min: 10, sample: 30 },
+  { id: 'i-trung', name: 'Trứng', unit: 'quả', kind: 'ingredient', tracking: 'estimate', min: 20, sample: 60 },
+  { id: 'i-lap-xuong', name: 'Lạp xưởng', unit: 'túi', kind: 'ingredient', tracking: 'estimate', min: 2, sample: 5 },
+  { id: 'i-xuc-xich', name: 'Xúc xích', unit: 'túi', kind: 'ingredient', tracking: 'estimate', min: 2, sample: 5 },
 ];
 
 const CAFE_SAMPLE_ITEMS = [
@@ -113,6 +120,11 @@ const MEATS: [RegExp, string][] = [
   [/(^|\s)bò(\s|$)/i, 'i-bo'],
   [/cá kho/i, 'i-ca-kho'],
 ];
+// Sides counted exactly: one portion per dish sold. Eggs, lạp xưởng and xúc xích are not deducted per sale.
+const SIDES: [RegExp, string][] = [
+  [/khoai tây chiên/i, 'i-khoai-tay-chien'],
+  [/ngô chiên/i, 'i-ngo-chien'],
+];
 const DRINKS: [RegExp, string][] = [
   [/sữa đậu/i, 'i-sua-dau'],
   [/coca/i, 'i-coca-cola'],
@@ -125,6 +137,8 @@ export function recipeFor(name: string): { itemId: string; qty: number }[] {
   const out: { itemId: string; qty: number }[] = [];
   const meat = MEATS.find(([re]) => re.test(name));
   if (meat) out.push({ itemId: meat[1], qty: 1 });
+  const side = SIDES.find(([re]) => re.test(name));
+  if (side) out.push({ itemId: side[1], qty: 1 });
   const drink = DRINKS.find(([re]) => re.test(name));
   if (drink) out.push({ itemId: drink[1], qty: 1 });
   // One takeaway box per rice portion or extra meat/fish portion (not for extra rice / vegetables).

@@ -14,12 +14,11 @@ const tz = Number(process.env.TZ_OFFSET_MIN ?? 420); // Vietnam UTC+7
 const summaryHour = Number(process.env.DAY_SUMMARY_HOUR ?? 22);
 
 const db = openDb(dbPath);
-if (process.env.SEED !== '0') {
-  seedIfEmpty(db);
-  if (process.env.SEED_DEMO_SALES === '1') seedDemoSales(db);
-}
+if (process.env.SEED !== '0') seedIfEmpty(db);
 // The shop's menu file (product/z.product) is the source of truth for products and tables.
 if (process.env.MENU_SYNC !== '0') watchMenu(db, { sampleStock: process.env.SEED !== '0' });
+// Demo sales sell the imported menu, so they run after it.
+if (process.env.SEED !== '0' && process.env.SEED_DEMO_SALES === '1') seedDemoSales(db);
 
 // End-of-day summary notification, once per local day after DAY_SUMMARY_HOUR.
 function daySummaryTick() {

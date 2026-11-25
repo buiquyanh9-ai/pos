@@ -296,7 +296,8 @@ export interface Summary {
   costCoverage: number;
   costOfGoods: number | null;
   grossProfit: number | null;
-  byHour: (Bucket & { hour: number })[];
+  /** byMethod: net revenue of the hour per payment method (cash, transfer, card). */
+  byHour: (Bucket & { hour: number; byMethod?: Record<string, number> })[];
   byDay: (Bucket & { date: string })[];
   byPayment: (Bucket & { method: string })[];
   byOrderType: (Bucket & { orderType: string })[];

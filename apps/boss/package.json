@@ -11,7 +11,7 @@
     "test": "vitest run",
     "android:sync": "vite build && cap sync android",
     "android:open": "cap open android",
-    "android:apk": "vite build && cap sync android && cd android && gradlew.bat assembleDebug"
+    "android:apk": "vite build && cap sync android && cd android && .\\gradlew.bat assembleDebug"
   },
   "dependencies": {
     "@capacitor/android": "^7.2.0",

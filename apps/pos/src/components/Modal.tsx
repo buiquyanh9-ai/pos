@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 
-export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+export function Modal({ title, onClose, children, wide, className }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean; className?: string }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className={wide ? 'modal wide' : 'modal'} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <div className={['modal', wide ? 'wide' : '', className ?? ''].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h2>{title}</h2>
           <button className="icon-btn" aria-label="Đóng" onClick={onClose}>

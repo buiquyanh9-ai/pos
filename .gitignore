@@ -12,3 +12,4 @@ apps/pos/android/app/src/main/assets/public/
 .idea/
 backups/
 tools/
+output/

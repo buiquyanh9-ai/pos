@@ -248,8 +248,10 @@ export function salesRoutes(db: DB) {
     const cashierId = actorId(req) ?? reqStr(req.body?.cashierId, 'cashierId', 64);
     const id = randomUUID();
     tx(db, () => {
-      const open = db.prepare("SELECT id FROM shifts WHERE device_id = ? AND status = 'open'").get(deviceId);
-      if (open) throw new HttpError(409, 'this device already has an open shift');
+      // A shift belongs to the staff member: logging out without closing keeps it open, and the same
+      // person gets it back at the next login. Other staff on the same device open their own shift.
+      const open = db.prepare("SELECT id FROM shifts WHERE cashier_id = ? AND status = 'open'").get(cashierId);
+      if (open) throw new HttpError(409, 'Bạn đang có một ca chưa đóng');
       db.prepare("INSERT INTO shifts (id, device_id, cashier_id, status, opened_at, opening_cash) VALUES (?, ?, ?, 'open', ?, ?)").run(
         id, deviceId, cashierId, now(), openingCash,
       );
@@ -260,9 +262,12 @@ export function salesRoutes(db: DB) {
     res.status(201).json(dto);
   });
 
+  /** The logged-in person's open shift (any device). The API key has no person: falls back to the device's shift. */
   r.get('/shifts/current', (req, res) => {
-    const deviceId = reqStr(req.query.deviceId, 'deviceId', 64);
-    const row = db.prepare(`${shiftSelect} WHERE s.device_id = ? AND s.status = 'open'`).get(deviceId);
+    const userId = actorId(req);
+    const row = userId
+      ? db.prepare(`${shiftSelect} WHERE s.cashier_id = ? AND s.status = 'open' ORDER BY s.opened_at DESC`).get(userId)
+      : db.prepare(`${shiftSelect} WHERE s.device_id = ? AND s.status = 'open'`).get(reqStr(req.query.deviceId, 'deviceId', 64));
     res.json({ shift: row ? rowToShift(row) : null });
   });
 

@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { normalizeBackendUrl, type PosSettings } from '../lib/settings';
 import { APP_VERSION, CONNECTION_LABEL, getState, updateSettings, usePos } from '../lib/store';
 import { listDrawers, listPrinters, listScanners } from '../hardware';
+import { listUsbDevices, type UsbDeviceInfo } from '../hardware/drivers/escpos-usb';
 import { openDrawer, printReceipt } from '../lib/receipt';
 import { notify } from '../lib/notify';
 import { dateTime } from '../lib/format';
@@ -16,7 +17,9 @@ interface DriverOption {
   available: boolean;
 }
 
-function useDriverOptions(list: { id: string; name: string; isAvailable(): Promise<boolean> }[]) {
+/** `refreshKey` changes when saved settings change: drivers such as the network printer only become
+ *  available once a printer address is saved, so availability must be re-checked after "Lưu cài đặt". */
+function useDriverOptions(list: { id: string; name: string; isAvailable(): Promise<boolean> }[], refreshKey: string) {
   const [opts, setOpts] = useState<DriverOption[]>(() => list.map((d) => ({ id: d.id, name: d.name, available: true })));
   useEffect(() => {
     let alive = true;
@@ -26,7 +29,8 @@ function useDriverOptions(list: { id: string; name: string; isAvailable(): Promi
     return () => {
       alive = false;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
   return opts;
 }
 
@@ -41,8 +45,8 @@ const SAMPLE_ORDER: LocalOrder = {
   tableName: '',
   note: '',
   items: [
-    { productId: null, name: 'Cà phê sữa', price: 25000, qty: 2, lineTotal: 50000 },
-    { productId: null, name: 'Bánh mì thịt', price: 25000, qty: 1, lineTotal: 25000 },
+    { productId: null, name: 'Cơm trắng sườn', price: 50000, qty: 1, lineTotal: 50000 },
+    { productId: null, name: 'Trà đá', price: 5000, qty: 5, lineTotal: 25000 },
   ],
   subtotal: 75000,
   discount: 5000,
@@ -55,7 +59,8 @@ const SAMPLE_ORDER: LocalOrder = {
   sync: 'synced',
 };
 
-export function SettingsScreen() {
+/** `beforeLogin`: opened from the login screen, so only what works without a session is shown. */
+export function SettingsScreen({ beforeLogin = false }: { beforeLogin?: boolean }) {
   const saved = usePos((s) => s.settings);
   const connection = usePos((s) => s.connection);
   const lastSyncAt = usePos((s) => s.lastSyncAt);
@@ -63,9 +68,10 @@ export function SettingsScreen() {
   const [form, setForm] = useState<PosSettings>(saved);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [section, setSection] = useState<'server' | 'store' | 'shop' | 'hardware' | 'about'>('server');
-  const printers = useDriverOptions(listPrinters());
-  const scanners = useDriverOptions(listScanners());
-  const drawers = useDriverOptions(listDrawers());
+  const driverKey = `${saved.backendUrl}|${saved.hardware?.printerAddress ?? ''}`;
+  const printers = useDriverOptions(listPrinters(), driverKey);
+  const scanners = useDriverOptions(listScanners(), driverKey);
+  const drawers = useDriverOptions(listDrawers(), driverKey);
 
   const field = <K extends keyof PosSettings>(k: K) => ({
     value: form[k] as string,
@@ -74,9 +80,11 @@ export function SettingsScreen() {
   const hw = <K extends keyof PosSettings['hardware']>(k: K, v: PosSettings['hardware'][K]) =>
     setForm({ ...form, hardware: { ...form.hardware, [k]: v } });
 
+  // Only the fields edited on this page; shop info (name, address…) arrives from the server meanwhile.
+  const mine = (x: PosSettings) => ({ backendUrl: x.backendUrl, apiKey: x.apiKey, deviceName: x.deviceName, hardware: x.hardware });
   const normalized = (): PosSettings | null => {
     try {
-      return { ...form, backendUrl: normalizeBackendUrl(form.backendUrl) };
+      return { ...saved, ...mine(form), backendUrl: normalizeBackendUrl(form.backendUrl) };
     } catch {
       notify('Địa chỉ máy chủ không hợp lệ', 'error');
       return null;
@@ -104,10 +112,10 @@ export function SettingsScreen() {
     notify('Đã lưu cài đặt', 'success');
   };
 
-  const dirty = JSON.stringify(form) !== JSON.stringify(saved);
+  const dirty = JSON.stringify(mine(form)) !== JSON.stringify(mine(saved));
 
   return (
-    <div className="settings-layout"><aside className="settings-menu"><div><span className="eyebrow">HỆ THỐNG</span><h1>Cài đặt</h1></div>{[['server','Máy chủ','Kết nối & đồng bộ'],['store','Máy này','Tên quầy, thu ngân'],['shop','Cửa hàng & chuyển khoản','Hoá đơn, tài khoản ngân hàng, mã QR'],['hardware','Phần cứng','Thiết bị ngoại vi'],['about','Thông tin','Phiên bản & hỗ trợ']].map(([id,label,desc]) => <button key={id} className={section === id ? 'settings-menu-item active' : 'settings-menu-item'} onClick={() => setSection(id as typeof section)}><strong>{label}</strong><small>{desc}</small></button>)}</aside><div className="settings">
+    <div className="settings-layout"><aside className="settings-menu"><div><span className="eyebrow">HỆ THỐNG</span><h1>Cài đặt</h1></div>{([['server','Máy chủ','Kết nối & đồng bộ'],['store','Máy này','Tên quầy / thiết bị'],['shop','Cửa hàng & chuyển khoản','Hoá đơn, tài khoản ngân hàng, mã QR'],['hardware','Phần cứng','Máy in, máy quét, két tiền'],['about','Thông tin','Phiên bản ứng dụng']] as const).filter(([id]) => !beforeLogin || id === 'server' || id === 'hardware' || id === 'about').map(([id,label,desc]) => <button key={id} className={section === id ? 'settings-menu-item active' : 'settings-menu-item'} onClick={() => setSection(id as typeof section)}><strong>{label}</strong><small>{desc}</small></button>)}</aside><div className="settings">
       {section === 'shop' && <StoreSettings />}
       {section === 'server' && <section className="card">
         <h2>Máy chủ</h2>
@@ -133,27 +141,12 @@ export function SettingsScreen() {
       </section>}
 
       {section === 'store' && <section className="card">
-        <h2>Cửa hàng & thiết bị</h2>
-        <label>
-          Tên cửa hàng (in trên hoá đơn)
-          <input {...field('storeName')} />
-        </label>
-        <label>
-          Địa chỉ cửa hàng
-          <input {...field('storeAddress')} />
-        </label>
+        <h2>Máy này</h2>
         <label>
           Tên quầy / thiết bị
-          <input {...field('deviceName')} />
+          <input {...field('deviceName')} placeholder="Quầy 1" />
         </label>
-        <label>
-          Thu ngân
-          <input {...field('cashier')} />
-        </label>
-        <label>
-          Lời cảm ơn cuối hoá đơn
-          <input {...field('receiptFooter')} />
-        </label>
+        <p className="muted small">Tên quán, địa chỉ và lời cảm ơn trên hoá đơn chỉnh ở mục “Cửa hàng & chuyển khoản”, áp dụng cho mọi máy.</p>
         <p className="muted small">
           Mã thiết bị: {form.deviceId} · Phiên bản {APP_VERSION} · {Capacitor.isNativePlatform() ? `Android app` : 'Trình duyệt'}
         </p>
@@ -164,6 +157,7 @@ export function SettingsScreen() {
         <DriverSelect label="Máy in hoá đơn" options={printers} value={form.hardware.printer} onChange={(v) => hw('printer', v)} />
         <DriverSelect label="Máy quét mã vạch" options={scanners} value={form.hardware.scanner} onChange={(v) => hw('scanner', v)} />
         <DriverSelect label="Két tiền" options={drawers} value={form.hardware.drawer} onChange={(v) => hw('drawer', v)} />
+        {Capacitor.isNativePlatform() && <UsbStatus />}
         <label>
           Địa chỉ máy in mạng (ESC/POS)
           <input
@@ -191,17 +185,34 @@ export function SettingsScreen() {
         </div>
       </section>}
 
-      {section === 'about' && <section className="card about-card"><span className="brand-mark large">S</span><h2>ShopFlow POS</h2><p className="muted">Hệ thống bán hàng và quản lý cửa hàng dành cho mô hình F&B.</p><div className="about-row"><span>Phiên bản ứng dụng</span><strong>{APP_VERSION}</strong></div><div className="about-row"><span>Nền tảng</span><strong>{Capacitor.isNativePlatform() ? 'Android POS' : 'Windows / trình duyệt'}</strong></div><div className="about-row"><span>Đồng bộ gần nhất</span><strong>{lastSyncAt ? dateTime(lastSyncAt) : 'Chưa có'}</strong></div></section>}
+      {section === 'about' && <section className="card about-card"><img className="brand-mark large" src="./logo.svg" alt="ShopFlow" /><h2>ShopFlow POS</h2><p className="muted">Hệ thống bán hàng và quản lý cửa hàng dành cho mô hình F&B.</p><div className="about-row"><span>Phiên bản ứng dụng</span><strong>{APP_VERSION}</strong></div><div className="about-row"><span>Nền tảng</span><strong>{Capacitor.isNativePlatform() ? 'Android POS' : 'Windows / trình duyệt'}</strong></div><div className="about-row"><span>Đồng bộ gần nhất</span><strong>{lastSyncAt ? dateTime(lastSyncAt) : 'Chưa có'}</strong></div></section>}
 
-      <div className="settings-actions">
+      {section !== 'shop' && section !== 'about' && <div className="settings-actions">
         <button className="btn secondary" disabled={!dirty} onClick={() => setForm(saved)}>
           Huỷ thay đổi
         </button>
         <button className="btn primary big" disabled={!dirty} onClick={onSave}>
           Lưu cài đặt
         </button>
-      </div>
+      </div>}
     </div></div>
+  );
+}
+
+/** Which USB devices the Android app sees, so a cable/permission problem is visible on the POS itself. */
+function UsbStatus() {
+  const [devices, setDevices] = useState<UsbDeviceInfo[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = () => { setError(null); listUsbDevices().then(setDevices, (e: unknown) => setError(e instanceof Error ? e.message : String(e))); };
+  useEffect(refresh, []);
+  const hex = (n: number) => n.toString(16).padStart(4, '0');
+  const printers = devices?.filter((d) => d.printer) ?? [];
+  return (
+    <p className="muted small">
+      Máy in USB:{' '}
+      {error ? `lỗi ${error}` : devices === null ? 'đang kiểm tra…' : printers.length === 0 ? 'không thấy (kiểm tra dây USB, nguồn máy in)' : printers.map((d) => `${d.name} [${hex(d.vendorId)}:${hex(d.productId)}]${d.permission ? '' : ' · chưa cấp quyền'}`).join(', ')}{' '}
+      <button className="btn ghost small" onClick={refresh}>Kiểm tra lại</button>
+    </p>
   );
 }
 

@@ -8,6 +8,9 @@ import { StockScreen } from './screens/StockScreen';
 import { AdminScreen } from './screens/AdminScreen';
 import { ReportsScreen } from './screens/ReportsScreen';
 import { Toasts } from './components/Toasts';
+import { Modal } from './components/Modal';
+import { printShiftSummary } from './lib/shiftSummary';
+import { money } from './lib/format';
 import { ICON, MoreMenu, type MoreItem } from './components/MoreMenu';
 import { cartReducer, emptyCart, type Cart } from './lib/cart';
 import { CONNECTION_LABEL, getState, logout, pendingCount, syncNow, usePos } from './lib/store';
@@ -50,6 +53,9 @@ export function App() {
   const canSell = role === 'owner' || role === 'cashier';
   const [tab, setTab] = useState<Tab>('sale');
   const [more, setMore] = useState(false);
+  const [askLogout, setAskLogout] = useState(false);
+  // Set when the cashier chose "close the shift" at logout: after closing, print the slip and log out.
+  const [closeThenLogout, setCloseThenLogout] = useState(false);
   const [serverSettings, setServerSettings] = useState(() => !getState().settings.backendUrl);
   const [query, setQuery] = useState('');
   const [clock, setClock] = useState(() => new Date());
@@ -61,11 +67,20 @@ export function App() {
   const pending = usePos(pendingCount);
   const syncing = usePos((s) => s.syncing);
   const hardware = usePos((s) => s.settings.hardware);
-  const storeName = usePos((s) => s.settings.storeName);
   useEffect(() => {
     const timer = window.setInterval(() => setClock(new Date()), 15_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  // Every login starts on the sale screen: the previous user's page (e.g. Két tiền after
+  // "close shift then log out") must not carry over to the next cashier.
+  const userId = session?.user.id;
+  useEffect(() => {
+    setTab('sale');
+    setCloseThenLogout(false);
+    setAskLogout(false);
+    setMore(false);
+  }, [userId]);
 
   // Stock staff do not sell: their home page is Hàng tồn.
   useEffect(() => {
@@ -98,7 +113,7 @@ export function App() {
               </button>
             </header>
             <main className="content">
-              <SettingsScreen />
+              <SettingsScreen beforeLogin />
             </main>
           </section>
         ) : (
@@ -114,7 +129,8 @@ export function App() {
     setMore(false);
     if (id === 'logout') {
       if (cart.lines.length && !cart.openId) return notify('Hoá đơn đang có món chưa lưu: bấm “Lưu đơn” hoặc “Xoá” trước khi đăng xuất', 'error');
-      return void logout();
+      // With a shift open, ask whether to close it; either way a sales summary is printed.
+      return shift ? setAskLogout(true) : void logout();
     }
     setTab(id as Tab);
   };
@@ -137,8 +153,9 @@ export function App() {
       <section className="app-main">
         {tab === 'sale' ? (
           <header className="strip">
+            <img className="strip-logo" src="./logo.svg" alt="ShopFlow" />
             <div className="strip-who">
-              <strong>{storeName || 'ShopFlow'}</strong>
+              <strong>ShopFlow POS</strong>
               <span>
                 {session.user.name}
                 {shift ? ` · ca từ ${new Date(shift.openedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ' · chưa mở ca'}
@@ -164,6 +181,7 @@ export function App() {
           </header>
         ) : (
           <header className="strip page">
+            <img className="strip-logo" src="./logo.svg" alt="ShopFlow" />
             {canSell ? (
               <button className="strip-back" onClick={() => setTab('sale')}>
                 ‹ Bán hàng
@@ -172,12 +190,7 @@ export function App() {
               <span />
             )}
             <h1>{page?.title}</h1>
-            <div className="strip-right">
-              {status}
-              <button className="strip-more" aria-label="Menu" onClick={() => setMore(true)}>
-                •••
-              </button>
-            </div>
+            <div className="strip-right">{status}</div>
           </header>
         )}
         {(connection === 'offline' || connection === 'unauthorized') && (
@@ -204,7 +217,18 @@ export function App() {
                 />
               )}
               {tab === 'reports' && <ReportsScreen />}
-              {tab === 'shift' && <ShiftScreen />}
+              {tab === 'shift' && (
+                <ShiftScreen
+                  closeThenLogout={closeThenLogout}
+                  onOpened={() => setTab('sale')}
+                  onClosed={async (report) => {
+                    if (!closeThenLogout) return;
+                    setCloseThenLogout(false);
+                    await printShiftSummary(report.shift, true);
+                    await logout();
+                  }}
+                />
+              )}
               {tab === 'stock' && <StockScreen />}
               {tab === 'admin' && <AdminScreen />}
               {tab === 'settings' && <SettingsScreen />}
@@ -212,8 +236,54 @@ export function App() {
           )}
         </main>
         {more && <MoreMenu items={items} onPick={pick} onClose={() => setMore(false)} />}
+        {askLogout && shift && (
+          <LogoutDialog
+            onCancel={() => setAskLogout(false)}
+            onKeepShift={async () => {
+              setAskLogout(false);
+              await printShiftSummary(shift, false);
+              await logout();
+            }}
+            onCloseShift={() => {
+              setAskLogout(false);
+              setCloseThenLogout(true);
+              setTab('shift');
+            }}
+          />
+        )}
         <Toasts />
       </section>
     </div>
+  );
+}
+
+function LogoutDialog({ onCancel, onKeepShift, onCloseShift }: { onCancel: () => void; onKeepShift: () => void; onCloseShift: () => void }) {
+  const shift = usePos((s) => s.shift)!;
+  const orders = usePos((s) => s.orders);
+  const sold = orders.filter((o) => o.shiftId === shift.id && o.status === 'completed');
+  const revenue = sold.reduce((a, o) => a + o.total, 0);
+  const opened = new Date(shift.openedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  return (
+    <Modal title="Đăng xuất" onClose={onCancel}>
+      <div className="logout-ask">
+        <p>
+          Ca của <strong>{shift.cashierName}</strong> đang mở từ {opened}: <strong>{sold.length} đơn</strong>, doanh thu <strong>{money(revenue)}</strong>.
+        </p>
+        <p className="muted">Bạn có muốn đóng ca không? Khi đăng xuất, máy sẽ in phiếu tổng kết gồm tất cả món đã bán và tổng doanh thu.</p>
+        <div className="logout-actions">
+          <button className="btn primary big" onClick={onCloseShift}>
+            Đóng ca rồi đăng xuất
+            <small>Đếm tiền két, đóng ca, in phiếu tổng kết</small>
+          </button>
+          <button className="btn secondary big" onClick={onKeepShift}>
+            Đăng xuất, không đóng ca
+            <small>Giữ ca cho lần đăng nhập sau, in phiếu tạm tính</small>
+          </button>
+          <button className="btn ghost" onClick={onCancel}>
+            Huỷ
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }

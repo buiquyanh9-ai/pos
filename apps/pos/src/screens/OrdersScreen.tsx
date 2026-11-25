@@ -79,9 +79,10 @@ export function OrdersScreen({ onEdit }: { onEdit?: (order: LocalOrder) => void 
           {byMethod.map((b) => (
             <button key={b.method} className={pay === b.method ? 'okpi pay active' : 'okpi pay'} onClick={() => setPay(pay === b.method ? 'all' : b.method)} title="Bấm để lọc">
               <span>
-                <i className={`pay-dot pay-${b.method}`} /> {PAYMENT_LABEL[b.method]} · {b.count} đơn
+                <i className={`pay-dot pay-${b.method}`} /> {PAYMENT_LABEL[b.method]}
               </span>
               <strong>{money(b.total)}</strong>
+              <small>{b.count} đơn</small>
             </button>
           ))}
         </div>

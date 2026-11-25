@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createUser } from './auth.ts';
 import { type DB, getSetting, logChange, now, openDb, setSetting, tx } from './db.ts';
 import { applyOrderStock, moveStock, productUnitCost } from './inventory.ts';
+import { importMenu } from './menu.ts';
+import { defaultMenuPath } from './menuWatch.ts';
 
 // SAMPLE DATA ONLY. Everything created here is marked: store name "Cửa hàng mẫu", demo accounts,
 // supplier names starting with "NCC mẫu", and generated orders on device "demo-seed" with note "[MẪU]".
@@ -10,10 +13,12 @@ import { applyOrderStock, moveStock, productUnitCost } from './inventory.ts';
 
 export const DEMO_ACCOUNTS = [
   { username: 'thungan', name: 'Kim', role: 'cashier', password: 'thungan123', pin: '1111' },
-  { username: 'kho', name: 'Minh', role: 'cashier', password: 'kho123456', pin: '2222' },
+  { username: 'thungan2', name: 'Minh', role: 'cashier', password: 'thungan2123', pin: '2222' },
   { username: 'chu', name: 'Hiền', role: 'owner', password: 'chu123456', pin: '3333' },
 ] as const;
 
+// ---- Test fixture only: the old café catalog. Server tests rely on it; real/fresh installs get the menu
+// from product/z.product instead (see menuWatch.ts), so it is NOT inserted unless `cafeFixture` is set.
 const CATEGORIES = [
   ['c-ca-phe', 'Cà phê', '#8B5E3C'],
   ['c-tra', 'Trà & Trà sữa', '#3F8F5B'],
@@ -59,7 +64,7 @@ const OPTION_GROUPS: [string, string, boolean, boolean, [string, number, number?
   ['g-topping', 'Topping', true, false, [['Thêm trân châu', 5000, 1, [['i-tran-chau', 0.03]]], ['Thạch dừa', 5000], ['Kem cheese', 8000, 1, [['i-sua-tuoi', 0.03]]]]],
 ];
 
-export function seedIfEmpty(db: DB) {
+export function seedIfEmpty(db: DB, opts: { cafeFixture?: boolean } = {}) {
   const n = Number(db.prepare('SELECT COUNT(*) AS n FROM users').get()!.n);
   if (n > 0) return false;
   tx(db, () => {
@@ -67,6 +72,17 @@ export function seedIfEmpty(db: DB) {
     setSetting(db, 'store_name', 'Cửa hàng mẫu ShopFlow');
     setSetting(db, 'receipt_footer', 'Cảm ơn quý khách, hẹn gặp lại!');
     setSetting(db, 'sample_data', '1');
+
+    for (let i = 1; i <= 8; i++) db.prepare("INSERT INTO dining_tables (id, name, area, sort) VALUES (?, ?, 'Trong nhà', ?)").run(`t-${i}`, `Bàn ${i}`, i);
+    for (let i = 1; i <= 4; i++) db.prepare("INSERT INTO dining_tables (id, name, area, sort) VALUES (?, ?, 'Sân vườn', ?)").run(`t-s${i}`, `S${i}`, i);
+    if (opts.cafeFixture) seedCafeFixture(db);
+  });
+  console.log('Seeded SAMPLE data (demo accounts: chu / thungan / thungan2, see README)');
+  return true;
+}
+
+function seedCafeFixture(db: DB) {
+  {
 
     CATEGORIES.forEach(([id, name, color], i) =>
       db.prepare('INSERT OR IGNORE INTO categories (id, name, sort, color) VALUES (?, ?, ?, ?)').run(id, name, i + 1, color),
@@ -105,12 +121,7 @@ export function seedIfEmpty(db: DB) {
       groups.forEach((g, j) => db.prepare('INSERT OR IGNORE INTO product_option_groups (product_id, group_id, sort) VALUES (?, ?, ?)').run(id, g, j));
       logChange(db, 'product', id, 'upsert');
     });
-
-    for (let i = 1; i <= 8; i++) db.prepare("INSERT INTO dining_tables (id, name, area, sort) VALUES (?, ?, 'Trong nhà', ?)").run(`t-${i}`, `Bàn ${i}`, i);
-    for (let i = 1; i <= 4; i++) db.prepare("INSERT INTO dining_tables (id, name, area, sort) VALUES (?, ?, 'Sân vườn', ?)").run(`t-s${i}`, `S${i}`, i);
-  });
-  console.log('Seeded SAMPLE data (demo accounts: chu / thungan / kho, see README)');
-  return true;
+  }
 }
 
 /** Generate realistic-looking SAMPLE sales for the last `days` days (device "demo-seed", note "[MẪU]"),
@@ -121,13 +132,19 @@ export function seedDemoSales(db: DB, days = 14, seed = 42) {
   let s = seed;
   const rand = () => ((s = (s * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
   const pick = <T>(a: readonly T[]) => a[Math.floor(rand() * a.length)];
-  const products = PRODUCTS.map(([id, , , name, cat, price]) => ({ id, name, price, cat: CATEGORIES.find((c) => c[0] === cat)![1] }));
-  const weights = [6, 9, 5, 7, 6, 5, 3, 3, 2];
-  const weighted = products.flatMap((p, i) => Array(weights[i]).fill(p) as (typeof p)[]);
+  // Sell whatever is on the current menu (imported from z.product), not a hard-coded catalog.
+  const products = (db.prepare('SELECT id, name, price, category FROM products WHERE active = 1 ORDER BY sort').all() as { id: string; name: string; price: number; category: string }[])
+    .map((p) => ({ id: p.id, name: p.name, price: Number(p.price), cat: p.category }));
+  if (!products.length) {
+    console.log('No active products yet (import the menu first), skipping demo sales');
+    return 0;
+  }
+  // Earlier items on the menu sell more often.
+  const weighted = products.flatMap((p, i) => Array(Math.max(1, 8 - Math.floor(i / 3))).fill(p) as (typeof p)[]);
   const hourWeights = [0, 0, 0, 0, 0, 0, 2, 6, 9, 7, 5, 6, 8, 6, 4, 4, 5, 6, 7, 6, 4, 2, 0, 0];
   const hours = hourWeights.flatMap((w, h) => Array(w).fill(h) as number[]);
   // Two shifts: Kim in the morning, Minh from 14:00.
-  const cashierOf = (hour: number) => (hour < 14 ? { id: 'u-thungan', name: 'Kim' } : { id: 'u-kho', name: 'Minh' });
+  const cashierOf = (hour: number) => (hour < 14 ? { id: 'u-thungan', name: 'Kim' } : { id: 'u-thungan2', name: 'Minh' });
   let count = 0;
   tx(db, () => {
     for (let d = days; d >= 1; d--) {
@@ -177,9 +194,9 @@ export function seedDemoSales(db: DB, days = 14, seed = 42) {
       }
     }
     // Top stock back up so the demo store can keep selling (as if goods were received).
-    for (const [id, , , , qty] of ITEMS) {
-      const cur = Number(db.prepare('SELECT qty FROM inventory_items WHERE id = ?').get(id)!.qty);
-      if (cur < qty) moveStock(db, id, qty - cur, { type: 'import', reason: 'Nhập bù dữ liệu mẫu' });
+    for (const it of db.prepare('SELECT id, qty, min_qty FROM inventory_items WHERE active = 1').all() as { id: string; qty: number; min_qty: number }[]) {
+      const target = Number(it.min_qty) * 4;
+      if (Number(it.qty) < target) moveStock(db, it.id, target - Number(it.qty), { type: 'import', reason: 'Nhập bù dữ liệu mẫu' });
     }
     setSetting(db, 'demo_sales', '1');
   });
@@ -190,5 +207,9 @@ export function seedDemoSales(db: DB, days = 14, seed = 42) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const db = openDb(process.env.DB_PATH ?? './data/shopflow.db');
   seedIfEmpty(db);
-  if (process.argv.includes('--demo-sales')) seedDemoSales(db);
+  if (process.argv.includes('--demo-sales')) {
+    const menu = defaultMenuPath();
+    if (existsSync(menu)) importMenu(db, readFileSync(menu, 'utf8'), { sampleStock: true });
+    seedDemoSales(db);
+  }
 }

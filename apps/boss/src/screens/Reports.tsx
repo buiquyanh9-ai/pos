@@ -5,7 +5,7 @@ import { OrderSheet } from './Activity';
 import { timeLocal, dateTimeLocal } from '../lib/range';
 import { PRESETS, customRange, isoDateLocal, presetRange, rangeDays, type Preset, type Range } from '../lib/range';
 import { useRemote } from '../lib/store';
-import { BarChart, RankBars } from '../components/Charts';
+import { BarChart, RankBars, paymentSegments } from '../components/Charts';
 import { Card, Header, Loading, Sheet, Stat } from '../components/UI';
 import { ShiftSheet } from './More';
 
@@ -114,7 +114,7 @@ function ReportView({
               <BarChart
                 title="Doanh thu theo giờ"
                 labelEvery={3}
-                data={s.byHour.map((b) => ({ key: String(b.hour), label: `${b.hour}h`, value: b.revenue, detail: `${b.orders} đơn` }))}
+                data={s.byHour.map((b) => ({ key: String(b.hour), label: `${b.hour}h`, value: b.revenue, detail: `${b.orders} đơn`, segments: paymentSegments(b.byMethod) }))}
               />
             ) : (
               <BarChart
@@ -152,7 +152,7 @@ function ReportView({
                 <BarChart
                   title="Doanh thu theo giờ"
                   labelEvery={3}
-                  data={s.byHour.map((b) => ({ key: String(b.hour), label: `${b.hour}h`, value: b.revenue, detail: `${b.orders} đơn` }))}
+                  data={s.byHour.map((b) => ({ key: String(b.hour), label: `${b.hour}h`, value: b.revenue, detail: `${b.orders} đơn`, segments: paymentSegments(b.byMethod) }))}
                 />
               ) : (
                 <BarChart
@@ -180,20 +180,6 @@ function ReportView({
                   <span>Doanh thu thuần</span>
                   <strong>{money(s.netRevenue)}</strong>
                 </li>
-                <li>
-                  <span>Giá vốn hàng bán</span>
-                  <strong>{s.costOfGoods === null ? '—' : `−${money(s.costOfGoods)}`}</strong>
-                </li>
-                <li className="total">
-                  <span>Lợi nhuận gộp</span>
-                  <strong>{s.grossProfit === null ? 'Thiếu dữ liệu giá vốn' : money(s.grossProfit)}</strong>
-                </li>
-                {s.grossProfit !== null && s.costCoverage < 1 && (
-                  <li className="muted small">
-                    <span>Lợi nhuận ước tính trên {Math.round(s.costCoverage * 100)}% doanh thu có giá vốn</span>
-                    <span />
-                  </li>
-                )}
                 <li className="muted">
                   <span>Đơn đã huỷ (không tính doanh thu)</span>
                   <span>

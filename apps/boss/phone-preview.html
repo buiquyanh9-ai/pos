@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Boss – iPhone 14 Pro Max</title>
+<!-- Dev-only preview: not part of the Vite build (only index.html is a build input). -->
+<style>
+  :root { --bg: #1e1f24; --fg: #e6e6e6; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 13px system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; overflow: hidden; }
+  .bar { display: flex; gap: 8px; align-items: center; }
+  .bar button { background: #33353d; color: var(--fg); border: 1px solid #4a4c55; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .stage { transform-origin: top center; }
+  /* iPhone 14 Pro Max: 430 x 932 CSS px */
+  .phone { position: relative; width: 430px; height: 932px; border-radius: 62px; background: #000;
+    box-shadow: 0 0 0 12px #0b0b0d, 0 0 0 14px #3a3b40, 0 30px 80px rgba(0,0,0,.6); overflow: hidden; }
+  .status { position: absolute; inset: 0 0 auto 0; height: 54px; display: flex; align-items: center;
+    justify-content: space-between; padding: 0 34px 0 46px; font-weight: 600; font-size: 16px; color: #fff; z-index: 2; pointer-events: none; }
+  .island { position: absolute; top: 11px; left: 50%; width: 126px; height: 37px; margin-left: -63px; background: #000; border-radius: 20px; z-index: 3; }
+  iframe { position: absolute; top: 54px; left: 0; width: 430px; height: calc(932px - 54px); border: 0; background: #fff; }
+  .home { position: absolute; bottom: 8px; left: 50%; width: 140px; height: 5px; margin-left: -70px; border-radius: 3px; background: rgba(0,0,0,.55); z-index: 2; pointer-events: none; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <span>iPhone 14 Pro Max · 430×932</span>
+    <button id="reload">Tải lại</button>
+    <button id="fit">Vừa màn hình</button>
+    <button id="real">100%</button>
+  </div>
+  <div class="stage" id="stage">
+    <div class="phone">
+      <div class="status"><span id="clock">9:41</span><span>●●● ▮</span></div>
+      <div class="island"></div>
+      <iframe id="app" src="./"></iframe>
+      <div class="home"></div>
+    </div>
+  </div>
+<script>
+  const stage = document.getElementById('stage');
+  let mode = 'fit';
+  function layout() {
+    const s = mode === 'fit' ? Math.min(1, (innerHeight - 70) / 960, (innerWidth - 40) / 460) : 1;
+    stage.style.transform = `scale(${s})`;
+    stage.style.height = 960 * s + 'px';
+  }
+  addEventListener('resize', layout);
+  document.getElementById('fit').onclick = () => { mode = 'fit'; layout(); };
+  document.getElementById('real').onclick = () => { mode = 'real'; layout(); };
+  document.getElementById('reload').onclick = () => document.getElementById('app').contentWindow.location.reload();
+  const tick = () => { const d = new Date(); document.getElementById('clock').textContent = d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
+  tick(); setInterval(tick, 30000); layout();
+</script>
+</body>
+</html>

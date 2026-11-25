@@ -149,7 +149,9 @@ export async function login(username: string, pin: string) {
   const r = await api.login(cfg(), { username, pin, client: `pos:${state.settings.deviceId}` });
   const session: Session = { token: r.token, expiresAt: r.expiresAt, user: r.user };
   save(K.session, session);
-  set({ session, connection: 'checking' });
+  // Shifts belong to people: start empty, then the sync loads this person's own open shift (if any).
+  save(K.shift, null);
+  set({ session, shift: null, connection: 'checking' });
   await syncNow();
   return r.user;
 }
@@ -158,8 +160,23 @@ export async function login(username: string, pin: string) {
 export async function logout() {
   const token = state.session?.token;
   save(K.session, null);
-  set({ session: null });
+  // The shift stays open on the server (if not closed) and comes back when this person logs in again.
+  save(K.shift, null);
+  set({ session: null, shift: null });
   if (token) await api.logout({ ...cfg(), token }).catch(() => undefined);
+}
+
+/** Shop name / address / receipt footer are set once on the server (Cài đặt → Cửa hàng); every
+ *  terminal keeps a local copy so receipts still print offline. */
+async function refreshStoreInfo() {
+  const info = await api.store(cfg()).catch(() => null);
+  if (!info) return;
+  const s = state.settings;
+  const next = { ...s, storeName: info.store_name || s.storeName, storeAddress: info.store_address, receiptFooter: info.receipt_footer };
+  if (next.storeName !== s.storeName || next.storeAddress !== s.storeAddress || next.receiptFooter !== s.receiptFooter) {
+    saveSettings(next);
+    set({ settings: next });
+  }
 }
 
 // ---- Shift
@@ -385,6 +402,7 @@ async function doSync() {
       }
     }
     await refreshCatalog();
+    await refreshStoreInfo();
     await flushOpenDeletes();
     await refreshOpenOrders();
     const { shift } = await api.currentShift(cfg(), state.settings.deviceId);

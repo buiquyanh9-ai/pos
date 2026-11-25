@@ -122,13 +122,19 @@ export function applyOrderStock(db: DB, orderId: string, lines: ConsumeLine[], s
 }
 
 /** Unit cost of one portion: recipe (scaled by options, plus option recipes) x ingredient cost,
- *  else the manual products.cost. */
+ *  else the manual products.cost. An ingredient with unit_cost 0 has no price entered yet (items
+ *  imported from the menu file start at 0), so the portion cost is unknown (null), not 0đ:
+ *  otherwise reports would show 100% profit on every such sale. */
 export function productUnitCost(db: DB, productId: string, optionIds: string[] = []): number | null {
   const hasRecipe = Boolean(db.prepare('SELECT 1 FROM recipes WHERE product_id = ?').get(productId));
   if (hasRecipe) {
     const cost = db.prepare('SELECT unit_cost FROM inventory_items WHERE id = ?');
     let total = 0;
-    for (const [id, q] of portionUsage(db, productId, optionIds)) total += q * Number(cost.get(id)?.unit_cost ?? 0);
+    for (const [id, q] of portionUsage(db, productId, optionIds)) {
+      const c = Number(cost.get(id)?.unit_cost ?? 0);
+      if (!(c > 0)) return null;
+      total += q * c;
+    }
     return Math.round(total);
   }
   const p = db.prepare('SELECT cost FROM products WHERE id = ?').get(productId);

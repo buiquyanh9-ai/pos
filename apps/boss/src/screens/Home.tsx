@@ -2,7 +2,7 @@ import { money, moneyShort } from '@shopflow/shared';
 import { api } from '../lib/api';
 import { localParts, timeLocal } from '../lib/range';
 import { useBoss, useRemote } from '../lib/store';
-import { BarChart } from '../components/Charts';
+import { BarChart, paymentSegments } from '../components/Charts';
 import { Card, Header, Loading, Stat } from '../components/UI';
 import type { Tab } from '../App';
 
@@ -46,17 +46,17 @@ export function Home({ go }: { go: (t: Tab) => void }) {
               <Stat label="Số đơn" value={String(t.orderCount)} change={t.change.orderCount} />
               <Stat label="Món đã bán" value={String(t.itemsSold)} change={t.change.itemsSold} />
               <Stat label="TB / đơn" value={moneyShort(t.avgOrderValue)} />
-              <Stat
-                label="Lợi nhuận gộp"
-                value={t.grossProfit === null ? '—' : moneyShort(t.grossProfit)}
-                hint={t.grossProfit === null ? 'chưa có giá vốn' : t.costCoverage < 1 ? `ước tính trên ${Math.round(t.costCoverage * 100)}% doanh thu` : undefined}
-              />
+              <Stat label="Hoàn tiền" value={moneyShort(t.refunds)} hint={t.refundCount ? `${t.refundCount} đơn` : undefined} />
             </div>
             <Card title="Doanh thu theo giờ">
               <BarChart
                 title="Doanh thu theo giờ hôm nay"
                 labelEvery={3}
-                data={t.byHour.slice(6, Math.max(nowHour + 1, 22)).map((b) => ({ key: String(b.hour), label: `${b.hour}h`, value: b.revenue, detail: `${b.orders} đơn` }))}
+                // Usual hours 6h-22h, widened to every hour that has sales (BOSS-001: after-midnight sales vanished).
+                data={t.byHour.slice(
+                  Math.min(6, ...t.byHour.filter((b) => b.orders > 0).map((b) => b.hour)),
+                  Math.max(nowHour + 1, 22, ...t.byHour.filter((b) => b.orders > 0).map((b) => b.hour + 1)),
+                ).map((b) => ({ key: String(b.hour), label: `${b.hour}h`, value: b.revenue, detail: `${b.orders} đơn`, segments: paymentSegments(b.byMethod) }))}
               />
             </Card>
             <div className="alerts">

@@ -5,6 +5,7 @@ import { notify } from '../lib/notify';
 import { closeShift, logout, openShift, remote, usePos } from '../lib/store';
 import { PAYMENT_LABEL, type PaymentMethod, type Shift, type ShiftReport, type Summary } from '../lib/types';
 import { Numpad } from '../components/Modal';
+import { printShiftSummary } from '../lib/shiftSummary';
 
 // Két tiền: open a shift, follow cash during the shift (sales, pay-ins/outs), count the drawer by
 // denomination at closing, and look back at previous shifts.
@@ -13,7 +14,7 @@ const NOTES = [500_000, 200_000, 100_000, 50_000, 20_000, 10_000, 5_000, 2_000, 
 const time = (iso: string) => new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 const fail = (e: unknown) => notify(e instanceof Error ? e.message : String(e), 'error');
 
-export function ShiftScreen({ onOpened }: { onOpened?: () => void }) {
+export function ShiftScreen({ onOpened, onClosed, closeThenLogout }: { onOpened?: () => void; onClosed?: (r: ShiftReport) => void; closeThenLogout?: boolean }) {
   const shift = usePos((s) => s.shift);
   const user = usePos((s) => s.session?.user);
   const orders = usePos((s) => s.orders);
@@ -31,7 +32,10 @@ export function ShiftScreen({ onOpened }: { onOpened?: () => void }) {
       {report ? (
         <ShiftReportView report={report} onDone={() => setReport(null)} />
       ) : shift ? (
-        <OpenShift shift={shift} onClosed={(r) => (setReport(r), loadHistory())} />
+        <>
+          {closeThenLogout && <p className="logout-banner">Đếm tiền trong két rồi bấm “Đóng ca”: máy sẽ in phiếu tổng kết ca và đăng xuất.</p>}
+          <OpenShift shift={shift} onClosed={(r) => (setReport(r), loadHistory(), onClosed?.(r))} />
+        </>
       ) : (
         <OpenForm userName={user?.name ?? ''} onOpened={() => (loadHistory(), onOpened?.())} />
       )}
@@ -158,7 +162,7 @@ function OpenShift({ shift, onClosed }: { shift: Shift; onClosed: (r: ShiftRepor
         <CashMoves shiftId={shift.id} moves={moves} onAdded={() => setTick((t) => t + 1)} />
         {pending > 0 && <p className="error-text">{pending} đơn của ca chưa gửi lên máy chủ. Cần có mạng để đóng ca.</p>}
       </section>
-      <CloseShift expected={expected} onClosed={onClosed} />
+      <CloseShift shift={shift} expected={expected} onClosed={onClosed} />
     </div>
   );
 }
@@ -218,7 +222,7 @@ function CashMoves({ shiftId, moves, onAdded }: { shiftId: string; moves: CashMo
   );
 }
 
-function CloseShift({ expected, onClosed }: { expected: number; onClosed: (r: ShiftReport) => void }) {
+function CloseShift({ shift, expected, onClosed }: { shift: Shift; expected: number; onClosed: (r: ShiftReport) => void }) {
   const openBills = usePos((s) => s.openOrders);
   const [confirmOpenBills, setConfirmOpenBills] = useState(false);
   const [counts, setCounts] = useState<Record<number, number>>({});
@@ -283,7 +287,7 @@ function CloseShift({ expected, onClosed }: { expected: number; onClosed: (r: Sh
         </p>
       )}
       <div className="cart-actions">
-        <button className="btn secondary" onClick={() => void logout()}>
+        <button className="btn secondary" onClick={async () => (await printShiftSummary(shift, false), await logout())}>
           Đăng xuất (giữ ca)
         </button>
         <button
@@ -384,8 +388,8 @@ function ShiftReportView({ report, onDone }: { report: ShiftReport; onDone: () =
           </li>
         </ul>
         <div className="cart-actions">
-          <button className="btn secondary" onClick={() => void logout()}>
-            Đăng xuất
+          <button className="btn secondary" onClick={async () => (await printShiftSummary(s, true), await logout())}>
+            In tổng kết &amp; đăng xuất
           </button>
           <button className="btn primary big" onClick={onDone}>
             Mở ca mới

@@ -17,6 +17,20 @@ packages/shared Types and formatting shared by POS and Boss
 docs/           SYNC.md (API & business rules) · ANDROID.md (APK) · DEPLOY.md (production) · SUNMI.md · PLAN.md
 ```
 
+## Demo bằng một thao tác
+
+Bấm đúp **`Demo ShopFlow.cmd`** (hoặc `npm run demo`). Script ([scripts/demo.mjs](scripts/demo.mjs)):
+
+- chạy máy chủ ở cổng 4000 với **dữ liệu MẪU riêng** `apps/server/data/demo.db` (tạo mới mỗi lần: 14 ngày bán hàng mẫu, hôm nay từ 0đ), **không đụng** `shopflow.db` và không đọc `.env`;
+- bật máy in ESC/POS ảo (cổng 9100, hoá đơn lưu ở `output/virtual-printer/`);
+- POS trên laptop là **app ShopFlow POS trên máy ảo Android** (như máy POS thật); Boss xem trên điện thoại của bạn ở `https://quan.t160.men/boss/`;
+- bật máy ảo (nếu chưa chạy), cài APK mới nhất, mở lại app POS; máy không có Android SDK thì mở POS bản web thay thế;
+- vì dùng cổng 4000, link công khai `https://quan.t160.men/boss/` cũng trỏ vào demo (điện thoại thật xem được qua 4G).
+
+Tài khoản mẫu: POS chọn Kim, PIN `1111` (Hiền là chủ, PIN `3333`); Boss `chu` / `chu123456`.
+Đóng cửa sổ demo là tắt hết. Nếu ShopFlow thật (`Mo ShopFlow.cmd`) đang chạy thì demo không chạy đè: đóng bản thật trước.
+Tuỳ chọn: `--keep` (giữ dữ liệu demo lần trước), `--no-android` (không có máy ảo: mở POS bản web), `--web` (mở thêm POS bản web).
+
 ## Quick start (Windows)
 
 Requires **Node.js 24+**.
@@ -50,7 +64,7 @@ npm run serve        # builds POS + Boss, then serves everything on port 4000
 
 The shop's menu is maintained in `c:\VISUAL\pos\product\z.product`, a Markdown file next to the repo.
 - The backend imports it at startup and again every time the file is saved. Products, prices, categories, the 5-slots-per-row layout and tables 001-024 all come from it.
-- Photos go in `product/product_img/<name>.jpg|png|webp`. The name is the product name without accents, joined with `-`, e.g. `com-trang-suon.jpg`. Takeaway items reuse the dine-in photo.
+- Photos go in `product/product_img/<label>/<name>.jpg|png|webp`. Labels: `com-trang` (white rice), `com-dao` (fried rice), `mon-them` (extra portions), `do-an-kem` (side dishes), `do-uong` (drinks). Example: `com-trang/com-trang-suon.jpg`. The server supplies `/media/products/<label>/<name>`; old flat URLs still work. Takeaway items reuse the dine-in photo. Six side-dish images are available for future menu entries; adding images does not add products or prices.
 - Check the result without changing anything: `npm run import-menu -w apps/server`. It prints the grid and any warnings.
 
 Stock rules applied from the file:
@@ -74,7 +88,7 @@ npm run tunnel         # terminal 2: public https link (Cloudflare Quick Tunnel,
 | Role | Username | Password (Boss) | PIN (POS) |
 |---|---|---|---|
 | Cashier (Thu ngân): Kim | `thungan` | `thungan123` | `1111` |
-| Cashier (Thu ngân): Minh | `kho` | `kho123456` | `2222` |
+| Cashier (Thu ngân): Minh | `thungan2` | `thungan2123` | `2222` |
 | Owner (Chủ cửa hàng): Hiền | `chu` | `chu123456` | `3333` |
 
 For a real shop:
@@ -148,3 +162,10 @@ See [docs/PLAN.md](docs/PLAN.md) for the plan and what has been tested. Not done
 - APK built and tested on a physical terminal (no hardware or Android SDK in the dev environment).
 - FCM push tested with a real Firebase project.
 - PostgreSQL. The data layer is SQLite for now; see `docs/DEPLOY.md` for the migration path.
+
+## Bật / tắt ShopFlow khi cần (máy này làm máy chủ)
+
+- **Bật:** bấm đúp `Mo ShopFlow.cmd` ở thư mục gốc. File sẽ sao lưu dữ liệu, chạy máy chủ (bản chính thức, không theo dõi sửa code) và mở POS.
+- **Dùng:** POS `https://quan.t160.men/pos/`, Boss `https://quan.t160.men/boss/`. Máy tính và điện thoại **không cần chung wifi** (đi qua Cloudflare Tunnel, dịch vụ `cloudflared` tự chạy cùng Windows).
+- **Tắt:** đóng cửa sổ ShopFlow. Khi tắt, link vẫn mở được trang nhưng không đăng nhập/đồng bộ được; POS đang mở vẫn bán offline và gửi đơn khi bật lại.
+- Lưu ý: máy ngủ hoặc gập màn hình = ShopFlow tạm dừng. Không chạy cùng lúc với `npm run dev` (cùng cổng 4000).

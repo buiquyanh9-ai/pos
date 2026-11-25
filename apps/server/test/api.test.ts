@@ -13,14 +13,14 @@ const tokens: Record<string, string> = {};
 
 before(async () => {
   const db = openDb(':memory:');
-  seedIfEmpty(db);
+  seedIfEmpty(db, { cafeFixture: true });
   server = createApp({ db, apiKey: 'svc-key' }).listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
   for (const [who, body] of [
     ['owner', { username: 'chu', password: 'chu123456' }],
     ['cashier', { username: 'thungan', pin: '1111' }],
-    ['stock', { username: 'kho', pin: '2222' }],
+    ['stock', { username: 'thungan2', pin: '2222' }],
   ] as const) {
     const r = await call('POST', '/auth/login', body, null);
     assert.equal(r.status, 200, `login ${who}`);
@@ -107,6 +107,17 @@ test('owner creates a product with a recipe; untracked products report stock nul
   assert.equal((await call('PUT', `/products/${p.body.id}`, { recipe: [{ itemId: 'nope', qty: 1 }] })).status, 400);
 });
 
+test('an ingredient with no price entered makes the cost unknown, not 0đ (no fake 100% profit)', async () => {
+  const ing = await call('POST', '/inventory/items', { name: 'Sườn (chưa có giá)', unit: 'phần' });
+  assert.equal(ing.status, 201);
+  const p = await call('POST', '/products', { name: 'Cơm sườn thử', price: 50000, category: 'Cơm' });
+  assert.equal((await call('PUT', `/products/${p.body.id}`, { recipe: [{ itemId: ing.body.id, qty: 1 }] })).status, 200);
+  assert.equal((await product(p.body.id)).cost, null);
+  const o = await call('POST', '/orders', order({ items: [{ productId: p.body.id, name: 'Cơm sườn thử', price: 50000, qty: 1 }], paid: 50000 }), 'cashier');
+  assert.equal(o.status, 201);
+  assert.equal(o.body.costTotal, null);
+});
+
 // ---------------------------------------------------------------- sales & stock
 test('a sale deducts recipe stock exactly once, even when uploaded twice or concurrently', async () => {
   const before = await item('i-sua-dac');
@@ -189,6 +200,21 @@ test('shift: open, sell cash, close with counted cash, report and notification',
   assert.ok(n.body.notifications.some((x: { type: string }) => x.type === 'shift.closed'));
 });
 
+test('shift belongs to the person: kept open after logout, others on the device open their own', async () => {
+  const kim = await call('POST', '/shifts/open', { deviceId: 'pos-share', openingCash: 0 }, 'cashier');
+  assert.equal(kim.status, 201);
+  // Minh logs in on the same device: no shift for him yet, and he can open his own.
+  assert.equal((await call('GET', '/shifts/current?deviceId=pos-share', undefined, 'stock')).body.shift, null);
+  const minh = await call('POST', '/shifts/open', { deviceId: 'pos-share', openingCash: 0 }, 'stock');
+  assert.equal(minh.status, 201);
+  // Kim comes back (even on another device) and gets her own open shift.
+  assert.equal((await call('GET', '/shifts/current?deviceId=pos-other', undefined, 'cashier')).body.shift.id, kim.body.id);
+  assert.equal((await call('GET', '/shifts/current?deviceId=pos-share', undefined, 'stock')).body.shift.id, minh.body.id);
+  for (const [id, who] of [[kim.body.id, 'cashier'], [minh.body.id, 'stock']] as const) {
+    assert.equal((await call('POST', `/shifts/${id}/close`, { countedCash: 0 }, who)).status, 200);
+  }
+});
+
 test('stocktake records variance, adjusts stock, requires a reason and notifies', async () => {
   const it = await item('i-duong');
   assert.equal((await call('POST', '/inventory/stocktakes', { lines: [{ itemId: 'i-duong', counted: it.qty - 0.5 }] }, 'stock')).status, 400);
@@ -236,6 +262,8 @@ test('reports: exact time window, hourly buckets, refunds at refund time, voids 
   assert.equal(s.voidedCount, 1);
   assert.equal(s.byHour[8].revenue, 20000);
   assert.equal(s.byHour[9].revenue, 40000);
+  assert.deepEqual(s.byHour[8].byMethod, { cash: 20000 });
+  assert.deepEqual(s.byHour[9].byMethod, { transfer: 40000 });
   assert.equal(s.byPayment.find((x: { method: string }) => x.method === 'transfer').revenue, 40000);
   assert.equal(s.byCategory[0].category, 'Cà phê');
   assert.ok(s.hasCostData);
@@ -383,10 +411,10 @@ test('open orders: one per table, optimistic locking, visible on dashboard, dele
 
 test('repeated wrong PINs lock the account for a while', async () => {
   resetLoginGuard();
-  for (let i = 0; i < 5; i++) assert.equal((await call('POST', '/auth/login', { username: 'kho', pin: '0000' }, null)).status, 401);
-  assert.equal((await call('POST', '/auth/login', { username: 'kho', pin: '2222' }, null)).status, 429);
+  for (let i = 0; i < 5; i++) assert.equal((await call('POST', '/auth/login', { username: 'thungan2', pin: '0000' }, null)).status, 401);
+  assert.equal((await call('POST', '/auth/login', { username: 'thungan2', pin: '2222' }, null)).status, 429);
   resetLoginGuard();
-  assert.equal((await call('POST', '/auth/login', { username: 'kho', pin: '2222' }, null)).status, 200);
+  assert.equal((await call('POST', '/auth/login', { username: 'thungan2', pin: '2222' }, null)).status, 200);
 });
 
 test('orders can be filtered by payment method', async () => {

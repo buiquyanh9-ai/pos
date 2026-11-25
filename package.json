@@ -14,7 +14,8 @@
     "test": "npm test -w apps/server && npm test -w apps/pos && npm test -w apps/boss",
     "dev:boss": "npm run dev -w apps/boss",
     "serve": "npm run build && npm start -w apps/server",
-    "tunnel": "node scripts/tunnel.mjs"
+    "tunnel": "node scripts/tunnel.mjs",
+    "demo": "node scripts/demo.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

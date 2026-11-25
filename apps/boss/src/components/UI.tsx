@@ -39,7 +39,9 @@ export function Header({ title, onBack, right }: { title: string; onBack?: () =>
           ‹
         </button>
       ) : (
-        <span className="icon-btn-spacer" />
+        <span className="head-logo">
+          <img src="./logo.svg" alt="ShopFlow" width="34" height="34" />
+        </span>
       )}
       <h1>{title}</h1>
       {right ?? <span className="icon-btn-spacer" />}

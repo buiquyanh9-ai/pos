@@ -1,3 +1,4 @@
+import './polyfills'; // first: old POS WebViews (Chrome 69)
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './hardware'; // registers hardware drivers

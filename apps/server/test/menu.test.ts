@@ -5,7 +5,7 @@ import type { Server } from 'node:http';
 import { openDb, type DB } from '../src/db.ts';
 import { createApp } from '../src/app.ts';
 import { seedIfEmpty } from '../src/seed.ts';
-import { importMenu, parseMenu } from '../src/menu.ts';
+import { importMenu, parseMenu, recipeFor } from '../src/menu.ts';
 
 const MD = [
   '# CẤU HÌNH MENU',
@@ -37,7 +37,7 @@ let token: string;
 
 before(async () => {
   db = openDb(':memory:');
-  seedIfEmpty(db);
+  seedIfEmpty(db, { cafeFixture: true });
   importMenu(db, MD, { sampleStock: true });
   server = createApp({ db }).listen(0);
   await new Promise((r) => server.once('listening', r));
@@ -69,7 +69,7 @@ test('parses categories, rows of 5, row prices, own prices, empty slots; ignores
   assert.deepEqual([by('Cơm trắng gà').row, by('Cơm trắng gà').col, by('Cơm trắng gà').price], [0, 1, 50000]);
   assert.deepEqual([by('Gà thêm').row, by('Gà thêm').col, by('Gà thêm').price], [1, 2, 40000]);
   assert.equal(by('Cơm trắng sườn mang về').price, 55000);
-  assert.equal(by('Cơm trắng sườn mang về').image, 'com-trang-suon');
+  assert.equal(by('Cơm trắng sườn mang về').image, 'com-trang/com-trang-suon');
   assert.equal(m.products.length, 7);
 });
 
@@ -83,7 +83,7 @@ test('import: menu replaces old products, tables 001-024, layout in product DTO'
   const p = body.products.find((x: { name: string }) => x.name === 'Gà thêm');
   assert.equal(p.gridRow, 1);
   assert.equal(p.gridCol, 2);
-  assert.equal(p.imageUrl, '/media/products/ga-them');
+  assert.equal(p.imageUrl, '/media/products/mon-them/ga-them');
   const t = (await call('GET', '/tables')).body.tables;
   assert.equal(t.length, 24);
   assert.equal(t[0].name, '001');
@@ -173,4 +173,16 @@ test('product photos are served without login; unknown photo is 404; bad names r
   const root = base.replace(/\/api$/, '');
   assert.equal((await fetch(`${root}/media/products/khong-co-anh-nay`)).status, 404);
   assert.equal((await fetch(`${root}/media/products/..%2F..%2Fsecret`)).status, 400);
+});
+
+test('Đồ ăn kèm: fries and corn deduct one portion, eggs and sausages are not deducted per sale', () => {
+  assert.deepEqual(recipeFor('Khoai tây chiên'), [{ itemId: 'i-khoai-tay-chien', qty: 1 }]);
+  assert.deepEqual(recipeFor('Ngô chiên'), [{ itemId: 'i-ngo-chien', qty: 1 }]);
+  for (const name of ['Trứng ốp', 'Trứng kho', 'Lạp xưởng', 'Xúc xích']) assert.deepEqual(recipeFor(name), [], name);
+  const m = parseMenu(['## 3. Mục Đồ ăn kèm', '**Hàng 1**', '1. Khoai tây chiên – 30.000đ', '2. Trứng ốp – 8.000đ', '**Hàng 2**', '1. Trứng kho – 10.000đ'].join(String.fromCharCode(10)));
+  assert.deepEqual(m.products.map((p) => [p.name, p.category, p.price, p.row, p.col, p.image]), [
+    ['Khoai tây chiên', 'Đồ ăn kèm', 30000, 0, 0, 'do-an-kem/khoai-tay-chien'],
+    ['Trứng ốp', 'Đồ ăn kèm', 8000, 0, 1, 'do-an-kem/trung-op'],
+    ['Trứng kho', 'Đồ ăn kèm', 10000, 1, 0, 'do-an-kem/trung-kho'],
+  ]);
 });

@@ -57,7 +57,10 @@ export function summarize(db: DB, q: ReportQuery) {
   let cogs = 0;
   let hasCostData = true;
   let costedSales = 0; // sales total of orders whose cost is known
-  const byHour: Bucket[] = Array.from({ length: 24 }, () => ({ revenue: 0, orders: 0 }));
+  const byHour: (Bucket & { byMethod: Record<string, number> })[] = Array.from({ length: 24 }, () => ({ revenue: 0, orders: 0, byMethod: {} }));
+  const addMethod = (hour: number, method: string, amount: number) => {
+    byHour[hour].byMethod[method] = (byHour[hour].byMethod[method] ?? 0) + amount;
+  };
   const byDay = new Map<string, Bucket>();
   const byPayment = new Map<string, Bucket>();
   const byOrderType = new Map<string, Bucket>();
@@ -85,6 +88,7 @@ export function summarize(db: DB, q: ReportQuery) {
     const local = localDate(o.created_at as string, tz);
     byHour[local.getUTCHours()].revenue += total;
     byHour[local.getUTCHours()].orders += 1;
+    addMethod(local.getUTCHours(), o.payment_method as string, total);
     add(byDay, local.toISOString().slice(0, 10), total, 1);
     add(byPayment, o.payment_method as string, total, 1);
     add(byOrderType, o.order_type as string, total, 1);
@@ -122,6 +126,7 @@ export function summarize(db: DB, q: ReportQuery) {
     if (o.cost_total !== null && o.cost_total !== undefined && amount >= Number(o.total)) refundedCost += Number(o.cost_total);
     const local = localDate(o.status_at as string, tz);
     byHour[local.getUTCHours()].revenue -= amount;
+    addMethod(local.getUTCHours(), o.payment_method as string, -amount);
     add(byDay, local.toISOString().slice(0, 10), -amount, 0);
     add(byPayment, o.payment_method as string, -amount, 0);
   }

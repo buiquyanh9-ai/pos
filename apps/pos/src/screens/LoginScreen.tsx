@@ -2,12 +2,48 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { CONNECTION_LABEL, cfg, getState, login, syncNow, usePos } from '../lib/store';
 import { ROLE_LABEL, type User } from '../lib/types';
+import { DataSphere } from '../components/DataSphere';
+
+const WORDS = ['nhanh hơn', 'chính xác', 'gọn gàng', 'an tâm'];
+const FEATURES = ['Đồng bộ với điện thoại chủ', 'Tự trừ kho theo món', 'Kiểm kê cuối ca', 'In hoá đơn & tổng kết ca', 'Báo cáo theo giờ', 'Vẫn bán khi mất mạng'];
+
+/** Rotating word in the headline, typed in one character at a time. */
+function RotatingWord() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => setI((n) => (n + 1) % WORDS.length), 2600);
+    return () => window.clearInterval(t);
+  }, []);
+  return (
+    <span className="lx-word" aria-live="off">
+      <span key={i} className="lx-word-in">
+        {[...WORDS[i]].map((c, k) => (
+          <span key={k} style={{ animationDelay: `${k * 45}ms` }}>
+            {c === ' ' ? ' ' : c}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+function Clock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(new Date()), 15_000);
+    return () => window.clearInterval(t);
+  }, []);
+  return (
+    <span>
+      {now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} · {now.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' })}
+    </span>
+  );
+}
 
 
 /** Staff picker + PIN pad. Shown whenever no one is logged in on this terminal. */
 export function LoginScreen({ onServerSettings }: { onServerSettings: () => void }) {
   const connection = usePos((s) => s.connection);
-  const storeName = usePos((s) => s.settings.storeName);
   const [staff, setStaff] = useState<User[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [who, setWho] = useState<User | null>(null);
@@ -42,12 +78,44 @@ export function LoginScreen({ onServerSettings }: { onServerSettings: () => void
   };
 
   return (
-    <div className="login-screen">
-      <div className="login-card">
+    <div className="login-screen lx">
+      <div className="lx-grid" aria-hidden="true" />
+      <section className="lx-left">
+        <span className="lx-eyebrow">
+          <span className="lx-rule" /> ShopFlow POS
+        </span>
+        <h1 className="lx-title">
+          <span>Bán hàng</span>
+          <span>
+            <RotatingWord />
+          </span>
+        </h1>
+        <p className="lx-lead">Tạo đơn, thu tiền, trừ kho tự động và tổng kết ca. Mọi số liệu đồng bộ ngay về điện thoại của chủ cửa hàng.</p>
+        <p className="lx-clock">
+          <Clock />
+        </p>
+        <div className="lx-marquee" aria-hidden="true">
+          <div className="lx-track">
+            {[0, 1].map((n) => (
+              <span key={n} className="lx-set">
+                {FEATURES.map((f) => (
+                  <span key={f} className="lx-feat">
+                    <i /> {f}
+                  </span>
+                ))}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="lx-right">
+        <DataSphere className="lx-sphere" />
+      <div className="login-card lx-card">
         <div className="login-brand">
-          <span className="brand-mark">S</span>
+          <img className="brand-mark" src="./logo.svg" alt="ShopFlow" />
           <div>
-            <h1>{storeName || 'ShopFlow POS'}</h1>
+            <h1>ShopFlow POS</h1>
             <span className={`conn conn-${connection}`}>
               <span className="dot" /> {CONNECTION_LABEL[connection]}
             </span>
@@ -109,6 +177,7 @@ export function LoginScreen({ onServerSettings }: { onServerSettings: () => void
           ⚙ Cài đặt máy chủ ({getState().settings.backendUrl || 'chưa cấu hình'})
         </button>
       </div>
+      </section>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { fold, imageSrc, money } from '../lib/format';
 import { closeOpenOrder, commitSale, getState, refreshOpenOrders, saveOpenOrder, usePos } from '../lib/store';
 import { openDrawer, printReceipt } from '../lib/receipt';
 import { notify } from '../lib/notify';
-import { COUNTER_PAYMENT_METHODS, PAYMENT_LABEL, type LocalOrder, type PaymentMethod, type Product } from '../lib/types';
+import { COUNTER_PAYMENT_METHODS, ORDER_TYPE_LABEL, PAYMENT_LABEL, type LocalOrder, type PaymentMethod, type Product } from '../lib/types';
 import { NoteDialog, OptionPicker } from '../components/OptionPicker';
 import { Modal, Numpad } from '../components/Modal';
 import { TablePicker } from '../components/TablePicker';
@@ -293,8 +293,13 @@ export function SaleScreen({ cart, dispatch, query, setQuery, onMore }: Props) {
               setShowBill(false);
               setDone(order);
               const s = getState().settings;
-              void printReceipt(order, s);
-              if (method === 'cash') void openDrawer(s);
+              // Every cash sale opens the drawer, exact amount or not (the note goes in the drawer too).
+              // Drawer first, then the receipt: the pulse is not queued behind a printing job, and the
+              // cashier can put the money away while the receipt prints.
+              void (async () => {
+                if (method === 'cash') await openDrawer(s);
+                await printReceipt(order, s);
+              })();
             } catch (err) {
               notify(err instanceof Error ? err.message : String(err), 'error');
             }
@@ -460,20 +465,61 @@ function PaymentDialog({ total, items, onPay, onClose }: { total: number; items:
 }
 
 function DoneDialog({ order, onClose }: { order: LocalOrder; onClose: () => void }) {
+  const time = new Date(order.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  const where = order.tableName ? `Bàn ${order.tableName}` : ORDER_TYPE_LABEL[order.orderType];
+  const qty = order.items.reduce((n, i) => n + i.qty, 0);
   return (
-    <Modal title="Đã thanh toán" onClose={onClose}>
-      <div className="done">
-        <div className="done-number">Đơn {order.number}</div>
-        <div className="amount">{money(order.total)}</div>
-        {order.change > 0 && <div className="change">Tiền thối: {money(order.change)}</div>}
-      </div>
-      <div className="cart-actions">
-        <button className="btn secondary" onClick={() => void printReceipt(order, getState().settings)}>
-          In lại
-        </button>
-        <button className="btn primary big" onClick={onClose} autoFocus>
-          Đơn mới
-        </button>
+    <Modal title="Đã thanh toán" onClose={onClose} className="done-modal">
+      <div className="done-body">
+        <section className="done-items">
+          <div className="done-row done-head">
+            <span>Món ({qty})</span>
+            <span>SL</span>
+            <span>Thành tiền</span>
+          </div>
+          <ul>
+            {order.items.map((i, k) => (
+              <li key={k} className="done-row">
+                <span className="done-name">
+                  <strong>{i.name}</strong>
+                  {i.options && <small>{i.options}</small>}
+                  {i.note && <small>Ghi chú: {i.note}</small>}
+                </span>
+                <span className="done-qty">× {i.qty}</span>
+                <span className="done-line">{money(i.lineTotal)}</span>
+              </li>
+            ))}
+          </ul>
+          {order.note && <p className="done-note">Ghi chú đơn: {order.note}</p>}
+        </section>
+        <aside className="done-summary">
+          <div className="done-number">Đơn {order.number}</div>
+          <div className="done-meta">{where} · {time} · {order.cashier}</div>
+          <dl className="done-totals">
+            {order.discount > 0 && (<><dt>Tạm tính</dt><dd>{money(order.subtotal)}</dd><dt>Giảm giá</dt><dd>−{money(order.discount)}</dd></>)}
+            <dt>Thanh toán</dt>
+            <dd>{PAYMENT_LABEL[order.paymentMethod]}</dd>
+            {order.paymentMethod === 'cash' && (<><dt>Khách đưa</dt><dd>{money(order.paid)}</dd></>)}
+          </dl>
+          <div className="done-total">
+            <span>Tổng cộng</span>
+            <strong>{money(order.total)}</strong>
+          </div>
+          {order.change > 0 && (
+            <div className="done-change">
+              <span>Tiền thối</span>
+              <strong>{money(order.change)}</strong>
+            </div>
+          )}
+          <div className="done-actions">
+            <button className="btn secondary big" onClick={() => void printReceipt(order, getState().settings)}>
+              In lại
+            </button>
+            <button className="btn primary big" onClick={onClose} autoFocus>
+              Đơn mới
+            </button>
+          </div>
+        </aside>
       </div>
     </Modal>
   );

@@ -39,7 +39,9 @@ export function subscribe(req: Request, res: Response) {
   res.write(`retry: 3000\n\n`);
   const client: Client = { res, role: req.user!.role };
   clients.add(client);
-  const ping = setInterval(() => res.write(`: ping\n\n`), 25_000);
+  // A named event (not a ":" comment, which EventSource hides from the page) so clients can tell a
+  // live stream from one silently dropped while the phone app slept, and reconnect.
+  const ping = setInterval(() => res.write(`event: ping\ndata: {}\n\n`), 25_000);
   req.on('close', () => {
     clearInterval(ping);
     clients.delete(client);

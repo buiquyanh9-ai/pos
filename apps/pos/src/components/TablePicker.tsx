@@ -51,10 +51,6 @@ export function TablePicker({ tables, openOrders, current, currentOpenId, onPick
                 onClick={() => (bill && bill.id !== currentOpenId ? onOpenBill(bill.id) : onPick(t.name))}
                 aria-label={bill ? `Bàn ${t.name}, đang có khách ${money(bill.total)}` : `Bàn ${t.name}, trống`}
               >
-                <span className="chair top" />
-                <span className="chair bottom" />
-                <span className="chair left" />
-                <span className="chair right" />
                 <span className="tp-name">{t.name}</span>
                 {bill && <span className="tp-total">{money(bill.total)}</span>}
                 {bill && <span className="tp-items">{bill.itemCount} món</span>}

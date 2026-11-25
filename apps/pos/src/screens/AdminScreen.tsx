@@ -93,7 +93,6 @@ function Products({ products, categories, groups, items, onChanged }: { products
             <th>Món</th>
             <th>Danh mục</th>
             <th className="num">Giá bán</th>
-            <th className="num">Giá vốn</th>
             <th className="num">Còn bán được</th>
             <th>Trạng thái</th>
           </tr>
@@ -107,10 +106,6 @@ function Products({ products, categories, groups, items, onChanged }: { products
               </td>
               <td>{p.category}</td>
               <td className="num">{money(p.price)}</td>
-              <td className="num muted">
-                {p.cost === null ? '—' : money(p.cost)}
-                {p.cost !== null && p.price > 0 && <span className="small"> ({Math.round((p.cost / p.price) * 100)}%)</span>}
-              </td>
               <td className="num">{p.stock === null ? <span className="muted">không theo dõi</span> : p.stock}</td>
               <td>{p.active ? <span className="pill pill-synced">Đang bán</span> : <span className="pill">Ngừng bán</span>}</td>
             </tr>
@@ -138,13 +133,11 @@ function ProductForm({ product: p, categories, groups, items, onClose, onSaved }
   const [sku, setSku] = useState(p?.sku ?? '');
   const [barcode, setBarcode] = useState(p?.barcode ?? '');
   const [imageUrl, setImageUrl] = useState(p?.imageUrl ?? '');
-  const [cost, setCost] = useState(p && p.recipe.length === 0 && p.cost !== null ? String(p.cost) : '');
   const [active, setActive] = useState(p?.active ?? true);
   const [optionIds, setOptionIds] = useState<string[]>(p?.optionGroups.map((g) => g.id) ?? []);
   const [recipe, setRecipe] = useState<{ itemId: string; qty: string }[]>(p?.recipe.map((r) => ({ itemId: r.itemId, qty: String(r.qty) })) ?? []);
   const [busy, setBusy] = useState(false);
 
-  const recipeCost = recipe.reduce((s, r) => s + (dec(r.qty) || 0) * (items.find((i) => i.id === r.itemId)?.unitCost ?? 0), 0);
   const priceN = num(price);
   const valid = name.trim() && Number.isInteger(priceN) && priceN >= 0 && recipe.every((r) => r.itemId && dec(r.qty) > 0);
 
@@ -160,7 +153,6 @@ function ProductForm({ product: p, categories, groups, items, onClose, onSaved }
       active,
       optionGroupIds: optionIds,
       recipe: recipe.map((r) => ({ itemId: r.itemId, qty: dec(r.qty) })),
-      cost: recipe.length ? null : cost.trim() ? num(cost) : null,
     };
     try {
       await remote(api.saveProduct, p?.id ?? null, body);
@@ -237,7 +229,7 @@ function ProductForm({ product: p, categories, groups, items, onClose, onSaved }
                 ))}
               </select>
               <input inputMode="decimal" value={r.qty} onChange={(e) => setRecipe(recipe.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} placeholder="Định mức" />
-              <span className="muted small">{it ? `${it.unit} · ${money(Math.round((dec(r.qty) || 0) * it.unitCost))}` : ''}</span>
+              <span className="muted small">{it ? it.unit : ''}</span>
               <button className="icon-btn" aria-label="Xoá dòng" onClick={() => setRecipe(recipe.filter((_, j) => j !== i))}>
                 ✕
               </button>
@@ -247,17 +239,6 @@ function ProductForm({ product: p, categories, groups, items, onClose, onSaved }
         <button className="btn secondary" onClick={() => setRecipe([...recipe, { itemId: '', qty: '' }])}>
           ＋ Thêm nguyên liệu
         </button>
-        {recipe.length > 0 ? (
-          <p className="muted">
-            Giá vốn theo công thức: <strong>{money(Math.round(recipeCost))}</strong>
-            {priceN > 0 && ` · ${Math.round((recipeCost / priceN) * 100)}% giá bán`}
-          </p>
-        ) : (
-          <label className="field">
-            Giá vốn nhập tay (đ, không bắt buộc)
-            <input inputMode="numeric" value={cost} onChange={(e) => setCost(e.target.value)} />
-          </label>
-        )}
 
         <label className="check">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Đang bán
@@ -395,6 +376,9 @@ function OptionForm({ group: g, items, onClose, onSaved }: { group: OptionGroup 
 // ---------------------------------------------------------------- inventory items
 function Items({ items, onChanged }: { items: InventoryItem[]; onChanged: () => void }) {
   const [editing, setEditing] = useState<InventoryItem | 'new' | null>(null);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const loadSuppliers = useCallback(() => remote(api.suppliers).then((r) => setSuppliers(r.suppliers)).catch(() => undefined), []);
+  useEffect(() => void loadSuppliers(), [loadSuppliers]);
   return (
     <>
       <div className="stock-actions">
@@ -409,7 +393,7 @@ function Items({ items, onChanged }: { items: InventoryItem[]; onChanged: () => 
             <th>Loại</th>
             <th>Đơn vị</th>
             <th className="num">Tối thiểu</th>
-            <th className="num">Giá vốn / đơn vị</th>
+            <th>Nhà cung cấp</th>
           </tr>
         </thead>
         <tbody>
@@ -421,24 +405,37 @@ function Items({ items, onChanged }: { items: InventoryItem[]; onChanged: () => 
               <td className="muted">{i.kind === 'goods' ? 'Hàng hoá' : 'Nguyên liệu'}</td>
               <td>{i.unit}</td>
               <td className="num">{i.minQty}</td>
-              <td className="num">{money(i.unitCost)}</td>
+              <td className="muted">{suppliers.find((s) => s.id === i.supplierId)?.name ?? '—'}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {editing && <ItemForm item={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => (setEditing(null), onChanged())} />}
+      {editing && (
+        <ItemForm
+          item={editing === 'new' ? null : editing}
+          suppliers={suppliers}
+          onSupplierAdded={loadSuppliers}
+          onClose={() => setEditing(null)}
+          onSaved={() => (setEditing(null), onChanged())}
+        />
+      )}
     </>
   );
 }
 
-function ItemForm({ item: it, onClose, onSaved }: { item: InventoryItem | null; onClose: () => void; onSaved: () => void }) {
+function ItemForm({ item: it, suppliers, onSupplierAdded, onClose, onSaved }: { item: InventoryItem | null; suppliers: Supplier[]; onSupplierAdded: () => Promise<unknown>; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(it?.name ?? '');
   const [unit, setUnit] = useState(it?.unit ?? 'kg');
   const [kind, setKind] = useState<'ingredient' | 'goods'>(it?.kind ?? 'ingredient');
   const [minQty, setMinQty] = useState(String(it?.minQty ?? 0));
-  const [unitCost, setUnitCost] = useState(String(it?.unitCost ?? 0));
+  const [supplierId, setSupplierId] = useState(it?.supplierId ?? '');
+  const [newSupplier, setNewSupplier] = useState<string | null>(null);
   const [qty, setQty] = useState('0');
-  const valid = name.trim() && unit.trim() && dec(minQty) >= 0 && Number.isInteger(num(unitCost));
+  const valid = name.trim() && unit.trim() && dec(minQty) >= 0;
+  const addSupplier = () =>
+    remote(api.saveSupplier, null, { name: newSupplier!.trim() })
+      .then(async (s) => (await onSupplierAdded(), setSupplierId(s.id), setNewSupplier(null), notify('Đã thêm nhà cung cấp', 'success')))
+      .catch(fail);
   return (
     <Modal title={it ? `Sửa: ${it.name}` : 'Nguyên liệu / hàng hoá mới'} onClose={onClose}>
       <div className="admin-form">
@@ -463,8 +460,28 @@ function ItemForm({ item: it, onClose, onSaved }: { item: InventoryItem | null; 
             <input inputMode="decimal" value={minQty} onChange={(e) => setMinQty(e.target.value)} />
           </label>
           <label className="field">
-            Giá vốn / {unit || 'đơn vị'} (đ)
-            <input inputMode="numeric" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
+            Nhà cung cấp
+            {newSupplier === null ? (
+              <select value={supplierId} onChange={(e) => (e.target.value === '+' ? setNewSupplier('') : setSupplierId(e.target.value))}>
+                <option value="">— Chưa chọn —</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+                <option value="+">＋ Thêm nhà cung cấp mới…</option>
+              </select>
+            ) : (
+              <span className="inline-add">
+                <input value={newSupplier} onChange={(e) => setNewSupplier(e.target.value)} placeholder="Tên nhà cung cấp" autoFocus />
+                <button className="btn primary" disabled={!newSupplier.trim()} onClick={addSupplier}>
+                  Thêm
+                </button>
+                <button className="btn secondary" onClick={() => setNewSupplier(null)}>
+                  Huỷ
+                </button>
+              </span>
+            )}
           </label>
           {!it && (
             <label className="field">
@@ -483,7 +500,7 @@ function ItemForm({ item: it, onClose, onSaved }: { item: InventoryItem | null; 
               unit: unit.trim(),
               kind,
               minQty: dec(minQty),
-              unitCost: num(unitCost),
+              supplierId: supplierId || null,
               ...(it ? {} : { qty: dec(qty) || 0 }),
             })
               .then(() => (notify('Đã lưu', 'success'), onSaved()))

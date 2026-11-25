@@ -1,6 +1,6 @@
 # ShopFlow – kế hoạch triển khai (Claude + Codex)
 
-Nguồn yêu cầu: `c:\VISUAL\pos\CLAUDE.md`. Tham khảo giao diện: `c:\VISUAL\pos\Giaodien\*.png`. Chỉ học bố cục và luồng thao tác, không dùng logo, tên hay ảnh của Ocha.
+Nguồn yêu cầu: `c:\VISUAL\pos\CLAUDE.md`. Tham khảo giao diện: `c:\VISUAL\pos\Giaodien\*.png`. Chỉ học bố cục và luồng thao tác, không dùng logo, tên hay ảnh.
 
 ## Quyết định kiến trúc
 

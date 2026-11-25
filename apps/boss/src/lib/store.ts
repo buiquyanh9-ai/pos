@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { Capacitor } from '@capacitor/core';
 import type { User } from '@shopflow/shared';
 import { api, ApiError, type Conn } from './api';
 
@@ -47,6 +48,9 @@ function defaultUrl() {
   const env = import.meta.env.VITE_API_URL as string | undefined;
   if (env) return env;
   if (sameOrigin) return location.origin;
+  // Installed APK/IPA: the web view's "localhost" is the phone itself, never the shop's server,
+  // so start empty and make the owner type the real address (same as the POS app).
+  if (Capacitor.isNativePlatform()) return '';
   if (typeof location !== 'undefined' && location.protocol.startsWith('http') && location.hostname !== 'localhost') {
     return `${location.protocol}//${location.hostname}:4000`;
   }
@@ -167,12 +171,48 @@ export async function refreshUnread() {
   }
 }
 
+// Debounced refetch of every live screen: a burst of sales triggers one reload.
+function bumpTick() {
+  if (tickTimer) clearTimeout(tickTimer);
+  tickTimer = setTimeout(() => set({ tick: state.tick + 1 }), 400);
+}
+
+// The phone pauses the app in the background and the stream can die without an error, so it
+// would show "Trực tiếp" over stale numbers. The server pings every 25s: no message for
+// STALE_MS means the stream is dead. Every (re)connect refetches, catching up missed sales.
+const STALE_MS = 60_000;
+let lastSeen = 0;
+let watchdog: ReturnType<typeof setInterval> | null = null;
+
+function restartLive() {
+  if (!state.session) return;
+  es?.close();
+  es = null;
+  startLive();
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && state.session) restartLive();
+  });
+  window.addEventListener('online', () => state.session && restartLive());
+}
+
 export function startLive() {
   if (es || !state.session) return;
   set({ live: 'connecting' });
+  lastSeen = Date.now();
   es = new EventSource(`${state.url}/api/events?token=${encodeURIComponent(state.session.token)}`);
-  es.onopen = () => set({ live: 'on' });
+  es.onopen = () => {
+    lastSeen = Date.now();
+    set({ live: 'on' });
+    bumpTick();
+  };
   es.onerror = () => set({ live: 'connecting' }); // EventSource reconnects by itself
+  es.addEventListener('ping', () => (lastSeen = Date.now()));
+  watchdog ??= setInterval(() => {
+    if (es && Date.now() - lastSeen > STALE_MS) restartLive();
+  }, 15_000);
   for (const type of EVENTS) {
     es.addEventListener(type, (ev) => {
       let data: unknown = null;
@@ -181,15 +221,14 @@ export function startLive() {
       } catch {
         /* ignore */
       }
+      lastSeen = Date.now();
       set({ lastEvent: { type, data } });
       eventListeners.forEach((l) => l(type, data));
       if (type === 'notification') {
         set({ unread: state.unread + 1 });
         showSystemNotification(data as { title: string; body: string });
       }
-      // Debounce refetches: a burst of sales triggers one reload.
-      if (tickTimer) clearTimeout(tickTimer);
-      tickTimer = setTimeout(() => set({ tick: state.tick + 1 }), 400);
+      bumpTick();
     });
   }
   void refreshUnread();
@@ -198,6 +237,8 @@ export function startLive() {
 export function stopLive() {
   es?.close();
   es = null;
+  if (watchdog) clearInterval(watchdog);
+  watchdog = null;
   set({ live: 'off' });
 }
 

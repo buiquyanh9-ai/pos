@@ -11,7 +11,7 @@ export const mockPrinter: PrinterDriver = {
   },
   async printReceipt(receipt: ReceiptData) {
     console.info('[mock-printer] receipt', receipt);
-    notify(`Đã "in" hoá đơn ${receipt.orderNumber} (mock)`);
+    notify(receipt.summary ? `Đã "in" ${receipt.summary.title.toLowerCase()} (mock)` : `Đã "in" hoá đơn ${receipt.orderNumber} (mock)`);
   },
 };
 

@@ -19,7 +19,7 @@ export function stockText(item: { qty: number; unit: string; tracking?: 'exact' 
   return `còn khoảng ${qty(rounded)} ${item.unit}`;
 }
 
-/** Product photo URL. The server stores "/media/products/<name>", relative to the backend. */
+/** Product photo URL. The server stores "/media/products/<group>/<name>", relative to the backend. */
 export function imageSrc(imageUrl: string | null | undefined, backendUrl: string) {
   if (!imageUrl) return null;
   if (/^https?:\/\//i.test(imageUrl) || imageUrl.startsWith('data:')) return imageUrl;

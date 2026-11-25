@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
-import { dateTime, money } from '../lib/format';
+import { dateTime } from '../lib/format';
 import { notify } from '../lib/notify';
 import { remote, usePos } from '../lib/store';
 import { MOVE_TYPE_LABEL, PURCHASE_STATUS_LABEL, type InventoryItem, type KitchenSession, type Purchase, type StockMove, type Supplier } from '../lib/types';
@@ -72,7 +72,6 @@ function StockTable({ items, canAdjust, onChanged }: { items: InventoryItem[]; c
       .catch(() => undefined);
   }, [items]);
   const u = (id: string, t: string) => usage[id]?.[t] ?? 0;
-  const totalValue = rows.reduce((s, i) => s + Math.max(0, i.qty) * i.unitCost, 0);
   return (
     <>
       <div className="segmented">
@@ -99,8 +98,6 @@ function StockTable({ items, canAdjust, onChanged }: { items: InventoryItem[]; c
             <th className="num">Bán hôm nay</th>
             <th className="num">Nhập hôm nay</th>
             <th className="num">{tracking === 'estimate' ? 'Xuất bếp / hao hụt' : 'Hao hụt'}</th>
-            <th className="num">Giá vốn</th>
-            <th className="num">Giá trị tồn</th>
             <th />
           </tr>
         </thead>
@@ -122,8 +119,6 @@ function StockTable({ items, canAdjust, onChanged }: { items: InventoryItem[]; c
               <td className="num">{u(i.id, 'sale') ? qty(-u(i.id, 'sale')) : '—'}</td>
               <td className="num pos">{u(i.id, 'import') ? `+${qty(u(i.id, 'import'))}` : '—'}</td>
               <td className="num neg">{u(i.id, 'waste') + u(i.id, 'issue') ? qty(-(u(i.id, 'waste') + u(i.id, 'issue'))) : '—'}</td>
-              <td className="num muted">{i.unitCost ? money(i.unitCost) : '—'}</td>
-              <td className="num">{i.unitCost ? money(Math.round(Math.max(0, i.qty) * i.unitCost)) : '—'}</td>
               <td className="num row-actions">
                 <button className="chip" onClick={() => setWasting(i)}>
                   Ghi hao hụt
@@ -142,9 +137,6 @@ function StockTable({ items, canAdjust, onChanged }: { items: InventoryItem[]; c
       <div className="stock-foot">
         <span>
           {rows.length} mặt hàng · {rows.filter((i) => i.low).length} sắp hết
-        </span>
-        <span>
-          Giá trị tồn (theo giá vốn): <strong>{totalValue ? money(Math.round(totalValue)) : 'chưa có giá vốn'}</strong>
         </span>
       </div>
       {adjusting && <AdjustDialog item={adjusting} onClose={() => setAdjusting(null)} onDone={() => (setAdjusting(null), onChanged())} />}
@@ -547,7 +539,6 @@ function Purchasing({ items, onChanged }: { items: InventoryItem[]; onChanged: (
               {p.decisionNote && <div className="small">Ghi chú duyệt: {p.decisionNote}</div>}
             </div>
             <div className="purchase-side">
-              <strong>{money(p.totalCost)}</strong>
               <span className={`pill pill-${p.status === 'received' ? 'synced' : p.status === 'rejected' ? 'rejected' : 'pending'}`}>{PURCHASE_STATUS_LABEL[p.status]}</span>
               {p.status === 'approved' && (
                 <button className="btn primary" onClick={() => setReceiving(p)}>
@@ -591,7 +582,6 @@ function CreatePurchase({ items, suppliers, onClose, onDone }: { items: Inventor
     () => items.filter((i) => Number((lines[i.id] ?? '').replace(',', '.')) > 0).map((i) => ({ item: i, qty: Number(lines[i.id].replace(',', '.')) })),
     [items, lines],
   );
-  const total = chosen.reduce((s, l) => s + l.qty * l.item.unitCost, 0);
   return (
     <Modal title="Đề xuất nhập hàng" onClose={onClose} wide>
       <div className="purchase-form">
@@ -612,7 +602,6 @@ function CreatePurchase({ items, suppliers, onClose, onDone }: { items: Inventor
               <th>Mặt hàng</th>
               <th className="num">Tồn / tối thiểu</th>
               <th className="num">SL nhập</th>
-              <th className="num">Thành tiền</th>
             </tr>
           </thead>
           <tbody>
@@ -627,7 +616,6 @@ function CreatePurchase({ items, suppliers, onClose, onDone }: { items: Inventor
                 <td className="num">
                   <input className="count-input" inputMode="decimal" value={lines[i.id] ?? ''} onChange={(e) => setLines({ ...lines, [i.id]: e.target.value })} placeholder="0" />
                 </td>
-                <td className="num">{Number(lines[i.id]) > 0 ? money(Math.round(Number(lines[i.id]) * i.unitCost)) : ''}</td>
               </tr>
             ))}
           </tbody>
@@ -646,7 +634,7 @@ function CreatePurchase({ items, suppliers, onClose, onDone }: { items: Inventor
               .catch(err)
           }
         >
-          Gửi đề xuất · {chosen.length} mặt hàng · {money(Math.round(total))}
+          Gửi đề xuất · {chosen.length} mặt hàng
         </button>
       </div>
     </Modal>
@@ -655,14 +643,12 @@ function CreatePurchase({ items, suppliers, onClose, onDone }: { items: Inventor
 
 /** Goods arrived without a request (market run, regular supplier): add them to stock right away. */
 function DirectImport({ items, suppliers, onClose, onDone }: { items: InventoryItem[]; suppliers: Supplier[]; onClose: () => void; onDone: () => void }) {
-  const [lines, setLines] = useState<Record<string, { qty: string; cost: string }>>({});
+  const [lines, setLines] = useState<Record<string, string>>({});
   const [supplierId, setSupplierId] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const n = (s: string | undefined) => Number((s ?? '').replace(/\./g, '').replace(',', '.')) || 0;
-  const chosen = items.filter((i) => n(lines[i.id]?.qty) > 0);
-  const total = chosen.reduce((s, i) => s + n(lines[i.id]?.qty) * (n(lines[i.id]?.cost) || i.unitCost), 0);
-  const set = (id: string, k: 'qty' | 'cost', v: string) => setLines({ ...lines, [id]: { qty: lines[id]?.qty ?? '', cost: lines[id]?.cost ?? '', [k]: v } });
+  const chosen = items.filter((i) => n(lines[i.id]) > 0);
   return (
     <Modal title="Nhập kho (hàng đã về)" onClose={onClose} wide>
       <div className="purchase-form">
@@ -689,8 +675,6 @@ function DirectImport({ items, suppliers, onClose, onDone }: { items: InventoryI
               <th>Mặt hàng</th>
               <th className="num">Đang có</th>
               <th className="num">Số lượng nhập</th>
-              <th className="num">Giá nhập / đơn vị</th>
-              <th className="num">Thành tiền</th>
             </tr>
           </thead>
           <tbody>
@@ -701,12 +685,8 @@ function DirectImport({ items, suppliers, onClose, onDone }: { items: InventoryI
                 </td>
                 <td className="num muted">{i.tracking === 'estimate' ? stockText(i) : qty(i.qty)}</td>
                 <td className="num">
-                  <input className="count-input" inputMode="decimal" value={lines[i.id]?.qty ?? ''} onChange={(e) => set(i.id, 'qty', e.target.value)} placeholder="0" />
+                  <input className="count-input" inputMode="decimal" value={lines[i.id] ?? ''} onChange={(e) => setLines({ ...lines, [i.id]: e.target.value })} placeholder="0" />
                 </td>
-                <td className="num">
-                  <input className="count-input wide" inputMode="numeric" value={lines[i.id]?.cost ?? ''} onChange={(e) => set(i.id, 'cost', e.target.value)} placeholder={i.unitCost ? String(i.unitCost) : 'giá'} />
-                </td>
-                <td className="num">{n(lines[i.id]?.qty) > 0 ? money(Math.round(n(lines[i.id]?.qty) * (n(lines[i.id]?.cost) || i.unitCost))) : ''}</td>
               </tr>
             ))}
           </tbody>
@@ -720,7 +700,7 @@ function DirectImport({ items, suppliers, onClose, onDone }: { items: InventoryI
               await remote(api.importStock, {
                 supplierId: supplierId || undefined,
                 note,
-                lines: chosen.map((i) => ({ itemId: i.id, qty: n(lines[i.id].qty), unitCost: n(lines[i.id].cost) || undefined })),
+                lines: chosen.map((i) => ({ itemId: i.id, qty: n(lines[i.id]) })),
               });
               notify(`Đã nhập kho ${chosen.length} mặt hàng`, 'success');
               onDone();
@@ -731,7 +711,7 @@ function DirectImport({ items, suppliers, onClose, onDone }: { items: InventoryI
             }
           }}
         >
-          Xác nhận nhập kho · {chosen.length} mặt hàng · {money(Math.round(total))}
+          Xác nhận nhập kho · {chosen.length} mặt hàng
         </button>
       </div>
     </Modal>

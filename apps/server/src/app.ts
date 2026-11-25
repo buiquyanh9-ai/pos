@@ -4,7 +4,8 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DB } from './db.ts';
-import { now } from './db.ts';
+import { logChange, now, tx } from './db.ts';
+import { PRODUCT_IMAGE_GROUPS, productImagePath } from './productImages.ts';
 import { authenticate, safeEqual } from './auth.ts';
 import { HttpError } from './validate.ts';
 import { hardwareRouter } from './hardwareRoutes.ts';
@@ -60,19 +61,39 @@ export function createApp({ db, apiKey }: AppOptions) {
   });
   app.use('/api', publicAuthRoutes(db));
 
-  // Product photos (public). Looked up by base name in MENU_IMG_DIR (default: <repo>/../product/product_img)
-  // and apps/server/media/products, any of .jpg .jpeg .png .webp. Missing photo -> 404 (apps show a letter tile).
+  // Migrate only legacy local image URLs; leave custom/external photos and menu data intact.
+  tx(db, () => {
+    const rows = db.prepare('SELECT id, image_url FROM products WHERE image_url LIKE ?').all('/media/products/%');
+    for (const row of rows) {
+      const url = String(row.image_url);
+      const match = url.match(/^\/media\/products\/([a-z0-9-]+)(\.(?:jpe?g|png|webp))?$/i);
+      if (!match) continue;
+      const path = productImagePath(match[1]);
+      if (path === match[1]) continue;
+      db.prepare('UPDATE products SET image_url = ?, updated_at = ? WHERE id = ?')
+        .run(`/media/products/${path}${match[2] ?? ''}`, now(), row.id);
+      logChange(db, 'product', String(row.id), 'upsert');
+    }
+  });
+
+  // Public labeled photos, plus legacy flat URLs for existing clients.
   const imgDirs = [
     process.env.MENU_IMG_DIR ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'product', 'product_img'),
     join(dirname(fileURLToPath(import.meta.url)), '..', 'media', 'products'),
   ];
-  app.get('/media/products/:name', (req, res) => {
+  app.get(['/media/products/:group/:name', '/media/products/:name'], (req, res) => {
     const name = String(req.params.name).replace(/\.(jpe?g|png|webp)$/i, '');
     if (!/^[a-z0-9-]{1,80}$/.test(name)) return void res.status(400).end();
+    const group = req.params.group;
+    if (group && !PRODUCT_IMAGE_GROUPS.some((g) => g === group)) return void res.status(400).end();
+    const paths = group ? [`${group}/${name}`] : [...new Set([productImagePath(name), name])];
     for (const dir of imgDirs) {
-      for (const ext of ['jpg', 'jpeg', 'png', 'webp']) {
-        const file = join(dir, `${name}.${ext}`);
-        if (existsSync(file)) return void res.sendFile(file, { maxAge: '1h' });
+      for (const path of paths) {
+        for (const ext of ['jpg', 'jpeg', 'png', 'webp']) {
+          const file = join(dir, `${path}.${ext}`);
+          // Revalidate replaced photos on the next load, while retaining cheap 304 responses.
+          if (existsSync(file)) return void res.sendFile(file, { maxAge: 0, lastModified: true, etag: true });
+        }
       }
     }
     res.status(404).end();
@@ -102,6 +123,13 @@ export function createApp({ db, apiKey }: AppOptions) {
     app.get(route, (req, res, next) => (req.originalUrl === route ? res.redirect(`${route}/`) : next()));
     app.use(route, express.static(dist, { index: 'index.html', maxAge: '1h', setHeaders: (res, path) => path.endsWith('index.html') && res.setHeader('cache-control', 'no-cache') }));
   }
+  // Bare link: computers/POS terminals go straight to the POS, phones to Boss. "/?chon" shows the chooser.
+  app.get('/', (req, res, next) => {
+    if ('chon' in req.query) return next();
+    const ua = String(req.headers['user-agent'] ?? '');
+    const phone = /iPhone|iPod|Android.+Mobile|Windows Phone/i.test(ua);
+    res.redirect(302, phone ? '/boss/' : '/pos/');
+  });
   app.get('/', (_req, res) => {
     res.type('html').send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ShopFlow</title>
 <body style="font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#eff6ff">

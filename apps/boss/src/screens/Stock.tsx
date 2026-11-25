@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MOVE_TYPE_LABEL, PURCHASE_STATUS_LABEL, money, qty, stockText, type InventoryItem, type Purchase } from '@shopflow/shared';
+import { MOVE_TYPE_LABEL, PURCHASE_STATUS_LABEL, qty, stockText, type InventoryItem, type Purchase } from '@shopflow/shared';
 import { api } from '../lib/api';
 import { dateTimeLocal } from '../lib/range';
 import { call, useRemote } from '../lib/store';
@@ -157,14 +157,6 @@ function ItemSheet({ item, onClose }: { item: InventoryItem; onClose: () => void
             {qty(item.minQty)} {item.unit}
           </span>
         </li>
-        <li>
-          <span>Giá vốn / {item.unit}</span>
-          <span>{money(item.unitCost)}</span>
-        </li>
-        <li>
-          <span>Giá trị tồn</span>
-          <span>{money(Math.round(item.qty * item.unitCost))}</span>
-        </li>
       </ul>
       <h3>Lịch sử nhập / xuất</h3>
       <MoveList moves={data?.moves ?? []} showItem={false} />
@@ -228,7 +220,7 @@ function Stocktakes() {
       {data?.stocktakes.map((t) => (
         <Card key={t.id} title={`Kiểm kê ${dateTimeLocal(t.createdAt)}`} action={<span className={t.varianceCount ? 'tag tag-warn' : 'tag tag-ok'}>{t.varianceCount ? `${t.varianceCount} lệch` : 'Khớp'}</span>}>
           <p className="muted small">
-            {t.userName ?? ''} · {t.lines.length} mặt hàng · giá trị chênh lệch {money(t.varianceValue)}
+            {t.userName ?? ''} · {t.lines.length} mặt hàng
           </p>
           <ul className="kv">
             {t.lines
@@ -281,7 +273,6 @@ function Purchases() {
                 </span>
               </span>
               <span className="right">
-                <strong>{money(p.totalCost)}</strong>
                 <span className={`tag tag-${p.status}`}>{PURCHASE_STATUS_LABEL[p.status]}</span>
               </span>
               <span className="chev">›</span>
@@ -323,7 +314,6 @@ function PurchaseSheet({ p, onClose }: { p: Purchase; onClose: () => void }) {
             <th>Mặt hàng</th>
             <th className="num">Tồn / tối thiểu</th>
             <th className="num">SL nhập</th>
-            <th className="num">Thành tiền</th>
           </tr>
         </thead>
         <tbody>
@@ -336,14 +326,10 @@ function PurchaseSheet({ p, onClose }: { p: Purchase; onClose: () => void }) {
               <td className="num">
                 {qty(l.receivedQty ?? l.qty)} {l.unit}
               </td>
-              <td className="num">{money(Math.round((l.receivedQty ?? l.qty) * l.unitCost))}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="sheet-total">
-        Tổng dự kiến <strong>{money(p.totalCost)}</strong>
-      </p>
       {p.status === 'pending' ? (
         <>
           <label>

@@ -3,13 +3,17 @@ import { encodeReceipt, openCashDrawerPulse, toBase64 } from '../escpos';
 import { getState } from '../../lib/store';
 
 function config() {
-  const s = getState().settings;
-  return { backendUrl: s.backendUrl?.replace(/\/$/, ''), apiKey: s.apiKey, address: s.hardware?.printerAddress, paperWidthChars: s.hardware?.paperWidthChars };
+  const st = getState();
+  const s = st.settings;
+  return { backendUrl: s.backendUrl?.replace(/\/$/, ''), token: st.session?.token, apiKey: s.apiKey, address: s.hardware?.printerAddress, paperWidthChars: s.hardware?.paperWidthChars };
 }
 async function send(data: Uint8Array): Promise<void> {
   const c = config();
   if (!c.backendUrl || !c.address) throw new Error('Chưa cấu hình backend hoặc địa chỉ máy in');
-  const response = await fetch(`${c.backendUrl}/api/hardware/escpos`, { method: 'POST', headers: { 'content-type': 'application/json', ...(c.apiKey ? { 'x-api-key': c.apiKey } : {}) }, body: JSON.stringify({ address: c.address, data: toBase64(data) }) });
+  // /api/hardware requires a session like every other API call: send the logged-in user's token.
+  const auth: Record<string, string> = c.token ? { authorization: `Bearer ${c.token}` } : c.apiKey ? { 'x-api-key': c.apiKey } : {};
+  if (!auth.authorization && !auth['x-api-key']) throw new Error('Đăng nhập trước khi in (máy chủ yêu cầu đăng nhập)');
+  const response = await fetch(`${c.backendUrl}/api/hardware/escpos`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: JSON.stringify({ address: c.address, data: toBase64(data) }) });
   if (!response.ok) {
     let message = `HTTP ${response.status}`;
     try { message = ((await response.json()) as { error?: string }).error ?? message; } catch { /* non-JSON response */ }

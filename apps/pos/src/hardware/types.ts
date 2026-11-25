@@ -32,6 +32,9 @@ export interface ReceiptData {
   paid: number;
   change: number;
   footer?: string;
+  /** Set for a sales summary slip (e.g. end of shift) instead of a customer receipt:
+   *  print `title` as the heading and `rows` instead of the payment block. */
+  summary?: { title: string; rows: { label: string; value: string; bold?: boolean }[] };
 }
 
 export interface PrinterDriver {

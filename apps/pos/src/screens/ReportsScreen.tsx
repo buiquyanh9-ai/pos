@@ -9,6 +9,8 @@ import { Modal } from '../components/Modal';
 type Preset = 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 
 const pad = (n: number) => String(n).padStart(2, '0');
+/** Bar stacking order, top to bottom. */
+const STACK = ['card', 'transfer', 'cash'] as const;
 const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const toInputDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
@@ -59,7 +61,12 @@ export function ReportsScreen() {
   const methods: PaymentMethod[] = ['cash', 'transfer'];
   const pay = (m: PaymentMethod) => data?.byPayment.find((p) => p.method === m) ?? { revenue: 0, orders: 0 };
   const maxHour = Math.max(1, ...(data?.byHour.map((h) => h.revenue) ?? [0]));
-  const hours = (data?.byHour ?? []).filter((h) => h.hour >= 5 && h.hour <= 23);
+  const openHour = (hour: number) => setDrill({ title: `${pad(hour)}:00 – ${pad(hour + 1)}:00 · ${r.label}`, hour });
+  // Usual opening hours 5h-23h, widened to include any hour that has sales (e.g. after midnight).
+  const sold = (data?.byHour ?? []).filter((h) => h.revenue > 0 || h.orders > 0).map((h) => h.hour);
+  const firstHour = Math.min(5, ...sold);
+  const lastHour = Math.max(23, ...sold);
+  const hours = (data?.byHour ?? []).filter((h) => h.hour >= firstHour && h.hour <= lastHour);
 
   return (
     <div className="report-screen">
@@ -133,19 +140,34 @@ export function ReportsScreen() {
             <h3>Doanh thu theo giờ</h3>
             <div className="hour-bars">
               {hours.map((h) => (
-                <button
+                // A div, not a <button>: old Android WebViews (Chrome < 83) ignore flex layout on buttons,
+                // which collapses the bar to 0 height.
+                <div
                   key={h.hour}
-                  className="hour-bar"
-                  disabled={!h.orders}
+                  className={h.orders ? 'hour-bar' : 'hour-bar disabled'}
+                  role="button"
+                  tabIndex={h.orders ? 0 : -1}
+                  aria-disabled={!h.orders}
                   title={`${pad(h.hour)}:00 – ${pad(h.hour + 1)}:00: ${money(h.revenue)} (${h.orders} đơn)`}
-                  onClick={() => setDrill({ title: `${pad(h.hour)}:00 – ${pad(h.hour + 1)}:00 · ${r.label}`, hour: h.hour })}
+                  onClick={() => h.orders && openHour(h.hour)}
+                  onKeyDown={(e) => h.orders && (e.key === 'Enter' || e.key === ' ') && openHour(h.hour)}
                 >
-                  <span className="hour-fill" style={{ height: `${(Math.max(0, h.revenue) / maxHour) * 100}%` }} />
+                  <span className="hour-fill" style={{ height: `${(Math.max(0, h.revenue) / maxHour) * 100}%` }}>
+                    {/* Stacked by payment method; block children so old WebViews (Chrome 69) render them too. */}
+                    {STACK.map((m) => {
+                      const v = Math.max(0, h.byMethod?.[m] ?? 0);
+                      return v > 0 && h.revenue > 0 ? <span key={m} className={`hour-seg pay-${m}`} style={{ height: `${Math.min(100, (v / h.revenue) * 100)}%` }} /> : null;
+                    })}
+                  </span>
                   <small>{h.hour}h</small>
-                </button>
+                </div>
               ))}
             </div>
-            <p className="muted small">Bấm vào cột giờ để xem các đơn trong giờ đó.</p>
+            <p className="muted small hour-legend">
+              <span><i className="pay-dot pay-cash" /> Tiền mặt</span>
+              <span><i className="pay-dot pay-transfer" /> Chuyển khoản</span>
+              <span>· Bấm vào cột giờ để xem các đơn trong giờ đó.</span>
+            </p>
           </section>
 
           <div className="report-two">
@@ -213,14 +235,20 @@ function DrillOrders({ title, from, to, method, hour, onClose }: { title: string
       </p>
       <ul className="detail-lines report-drill">
         {list?.map((o) => (
-          <li key={o.id}>
-            <span>
-              <strong>{o.number}</strong> · {new Date(o.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-              {o.tableName && ` · Bàn ${o.tableName}`} · {PAYMENT_LABEL[o.paymentMethod] ?? o.paymentMethod} · {o.cashier}
-              <small className="muted"> — {o.items.map((i) => `${i.qty}× ${i.name}`).join(', ')}</small>
-              {o.status !== 'completed' && <small className="error-text"> ({o.status === 'voided' ? 'đã huỷ' : 'đã hoàn tiền'})</small>}
-            </span>
-            <strong>{money(o.total)}</strong>
+          <li key={o.id} className="drill-row">
+            <div className="drill-main">
+              <div className="drill-head">
+                <strong>{o.number}</strong>
+                <span className="muted">
+                  {' · '}{new Date(o.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                  {o.tableName ? ` · Bàn ${o.tableName}` : ''} · {o.cashier}
+                </span>{' '}
+                <span className={`pay-badge pay-${o.paymentMethod}`}>{PAYMENT_LABEL[o.paymentMethod] ?? o.paymentMethod}</span>
+                {o.status !== 'completed' && <span className="error-text"> ({o.status === 'voided' ? 'đã huỷ' : 'đã hoàn tiền'})</span>}
+              </div>
+              <div className="drill-items">{o.items.map((i) => `${i.qty}× ${i.name}`).join(', ')}</div>
+            </div>
+            <strong className="drill-total">{money(o.total)}</strong>
           </li>
         ))}
         {list && !list.length && <li className="muted">Không có đơn</li>}
