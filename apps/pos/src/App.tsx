@@ -4,7 +4,6 @@ import { OrdersScreen } from './screens/OrdersScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import { ShiftScreen } from './screens/ShiftScreen';
-import { StockScreen } from './screens/StockScreen';
 import { AdminScreen } from './screens/AdminScreen';
 import { ReportsScreen } from './screens/ReportsScreen';
 import { Toasts } from './components/Toasts';
@@ -19,13 +18,12 @@ import { getScanner } from './hardware';
 import { notify } from './lib/notify';
 import type { LocalOrder, Role } from './lib/types';
 
-type Tab = 'sale' | 'orders' | 'reports' | 'stock' | 'shift' | 'admin' | 'settings';
+type Tab = 'sale' | 'orders' | 'reports' | 'shift' | 'admin' | 'settings';
 
 // The "•••" launcher (classic F&B POS): every page except selling opens from here.
 const MENU: (MoreItem & { id: Tab | 'logout'; roles: Role[]; title: string })[] = [
   { id: 'orders', label: 'Hoạt động', title: 'Hoạt động: đơn hàng gần đây', icon: ICON.activity, color: '#22c55e', roles: ['owner', 'cashier'] },
   { id: 'reports', label: 'Báo cáo', title: 'Báo cáo doanh thu', icon: ICON.report, color: '#3b82f6', roles: ['owner', 'cashier'] },
-  { id: 'stock', label: 'Hàng tồn', title: 'Hàng tồn', icon: ICON.stock, color: '#ef4444', roles: ['owner', 'cashier'] },
   { id: 'admin', label: 'Nhân viên & thực đơn', title: 'Quản lý', icon: ICON.staff, color: '#a855f7', roles: ['owner'] },
   { id: 'shift', label: 'Két tiền', title: 'Két tiền (ca làm việc)', icon: ICON.cash, color: '#0ea5e9', roles: ['owner', 'cashier'] },
   { id: 'settings', label: 'Cài đặt', title: 'Cài đặt', icon: ICON.settings, color: '#6366f1', roles: ['owner', 'cashier'] },
@@ -81,12 +79,6 @@ export function App() {
     setAskLogout(false);
     setMore(false);
   }, [userId]);
-
-  // Stock staff do not sell: their home page is Hàng tồn.
-  useEffect(() => {
-    if (role && !canSell && (tab === 'sale' || !MENU.some((m) => m.id === tab && m.roles.includes(role)))) setTab('stock');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role]);
 
   // Barcode scanner: a scan adds the matching product on the sale screen.
   useEffect(() => {
@@ -171,7 +163,7 @@ export function App() {
             )}
             <div className="strip-right">
               {status}
-              {/* Before a shift is open the bottom bar is not shown: keep the launcher reachable (reports, stock…). */}
+              {/* Before a shift is open the bottom bar is not shown: keep the launcher reachable (reports, settings…). */}
               {needsShift && (
                 <button className="strip-more" aria-label="Menu" onClick={() => setMore(true)}>
                   •••
@@ -229,7 +221,6 @@ export function App() {
                   }}
                 />
               )}
-              {tab === 'stock' && <StockScreen />}
               {tab === 'admin' && <AdminScreen />}
               {tab === 'settings' && <SettingsScreen />}
             </>

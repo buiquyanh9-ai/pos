@@ -1,4 +1,4 @@
-import type { InventoryItem, KitchenSession, OpenOrder, Purchase, Shift, ShiftReport, StockMove, Stocktake, Summary, User } from '@shopflow/shared';
+import type { OpenOrder, Shift, ShiftReport, Summary, User } from '@shopflow/shared';
 
 /** Cart as stored by the POS inside an open bill (only the fields Boss shows). */
 export interface OpenCart {
@@ -97,8 +97,6 @@ export interface Notification {
 
 export interface Dashboard {
   today: Summary & Compare;
-  lowStockCount: number;
-  pendingPurchases: number;
   openShifts: number;
   openOrders: { count: number; total: number };
   serverTime: string;
@@ -121,13 +119,6 @@ export const api = {
   orders: (c: Conn, p: { from: string; to: string; paymentMethod?: string; status?: string }) =>
     request<{ orders: ApiOrder[] }>(c, 'GET', `/orders${q({ from: p.from, to: p.to, paymentMethod: p.paymentMethod, status: p.status, limit: 1000 })}`),
   order: (c: Conn, id: string) => request<ApiOrder>(c, 'GET', `/orders/${encodeURIComponent(id)}`),
-  inventory: (c: Conn) => request<{ items: InventoryItem[] }>(c, 'GET', '/inventory/items'),
-  moves: (c: Conn, p: { itemId?: string; type?: string; limit?: number }) => request<{ moves: StockMove[] }>(c, 'GET', `/inventory/moves${q(p)}`),
-  kitchenSessions: (c: Conn) => request<{ sessions: KitchenSession[] }>(c, 'GET', '/kitchen/sessions'),
-  stocktakes: (c: Conn) => request<{ stocktakes: Stocktake[] }>(c, 'GET', '/inventory/stocktakes'),
-  purchases: (c: Conn, status?: string) => request<{ purchases: Purchase[] }>(c, 'GET', `/purchases${q({ status })}`),
-  approve: (c: Conn, id: string, note: string) => request<Purchase>(c, 'POST', `/purchases/${encodeURIComponent(id)}/approve`, { note }),
-  reject: (c: Conn, id: string, note: string) => request<Purchase>(c, 'POST', `/purchases/${encodeURIComponent(id)}/reject`, { note }),
   shifts: (c: Conn, from?: string, to?: string) => request<{ shifts: Shift[] }>(c, 'GET', `/shifts${q({ from, to })}`),
   shiftReport: (c: Conn, id: string) => request<ShiftReport>(c, 'GET', `/shifts/${encodeURIComponent(id)}/report`),
   audit: (c: Conn) =>

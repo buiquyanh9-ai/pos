@@ -5,7 +5,7 @@ import { ROLE_LABEL, type User } from '../lib/types';
 import { DataSphere } from '../components/DataSphere';
 
 const WORDS = ['nhanh hơn', 'chính xác', 'gọn gàng', 'an tâm'];
-const FEATURES = ['Đồng bộ với điện thoại chủ', 'Tự trừ kho theo món', 'Kiểm kê cuối ca', 'In hoá đơn & tổng kết ca', 'Báo cáo theo giờ', 'Vẫn bán khi mất mạng'];
+const FEATURES = ['Đồng bộ với điện thoại chủ', 'Thanh toán tiền mặt & VietQR', 'Đếm két cuối ca', 'In hoá đơn & tổng kết ca', 'Báo cáo theo giờ', 'Vẫn bán khi mất mạng'];
 
 /** Rotating word in the headline, typed in one character at a time. */
 function RotatingWord() {
@@ -90,7 +90,7 @@ export function LoginScreen({ onServerSettings }: { onServerSettings: () => void
             <RotatingWord />
           </span>
         </h1>
-        <p className="lx-lead">Tạo đơn, thu tiền, trừ kho tự động và tổng kết ca. Mọi số liệu đồng bộ ngay về điện thoại của chủ cửa hàng.</p>
+        <p className="lx-lead">Tạo đơn, thu tiền, in hoá đơn và tổng kết ca. Mọi số liệu đồng bộ ngay về điện thoại của chủ cửa hàng.</p>
         <p className="lx-clock">
           <Clock />
         </p>

@@ -5,7 +5,7 @@ import type { Server } from 'node:http';
 import { openDb, type DB } from '../src/db.ts';
 import { createApp } from '../src/app.ts';
 import { seedIfEmpty } from '../src/seed.ts';
-import { importMenu, parseMenu, recipeFor } from '../src/menu.ts';
+import { importMenu, parseMenu } from '../src/menu.ts';
 
 const MD = [
   '# CẤU HÌNH MENU',
@@ -26,7 +26,7 @@ const MD = [
   '## 4. Mục Mang về',
   '**Hàng 1 – Cơm trắng mang về (55.000đ)**',
   '1. Cơm trắng sườn mang về',
-  '## 5. Quản lý tồn kho',
+  '## 5. Ghi chú',
   '1. Không phải món',
 ].join('\n');
 
@@ -38,7 +38,7 @@ let token: string;
 before(async () => {
   db = openDb(':memory:');
   seedIfEmpty(db, { cafeFixture: true });
-  importMenu(db, MD, { sampleStock: true });
+  importMenu(db, MD);
   server = createApp({ db }).listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
@@ -60,7 +60,6 @@ async function call(method: string, path: string, body?: unknown) {
   const t = await res.text();
   return { status: res.status, body: t ? JSON.parse(t) : null };
 }
-const qty = async (id: string) => (await call('GET', `/inventory/items/${id}`)).body.qty as number;
 
 test('parses categories, rows of 5, row prices, own prices, empty slots; ignores non-menu sections', () => {
   const m = parseMenu(MD);
@@ -90,95 +89,13 @@ test('import: menu replaces old products, tables 001-024, layout in product DTO'
   assert.equal(importMenu(db, MD).changed, false); // unchanged file -> no-op
 });
 
-test('exact stock: rice + meat portion deducts 1 meat; takeaway also 1 box; drinks; rice never; void returns all', async () => {
-  const suon = await qty('i-suon');
-  const box = await qty('i-hop-mang-ve');
-  const coca = await qty('i-coca-cola');
-  const rice = await qty('i-gao');
-  const o = {
-    id: 'm-1',
-    number: 'M-1',
-    deviceId: 'pos-m',
-    items: [
-      { productId: 'p-com-trang-suon', name: 'Cơm trắng sườn', price: 50000, qty: 2 },
-      { productId: 'p-com-trang-suon-mang-ve', name: 'Cơm trắng sườn mang về', price: 55000, qty: 1 },
-      { productId: 'p-coca-cola', name: 'Coca-Cola', price: 10000, qty: 1 },
-      { productId: 'p-tra-da', name: 'Trà đá', price: 5000, qty: 1 },
-      { productId: 'p-rau-them', name: 'Rau thêm', price: 10000, qty: 1 },
-    ],
-    paymentMethod: 'cash',
-    paid: 200000,
-  };
-  assert.equal((await call('POST', '/orders', o)).status, 201);
-  assert.equal(await qty('i-suon'), suon - 3);
-  assert.equal(await qty('i-hop-mang-ve'), box - 1);
-  assert.equal(await qty('i-coca-cola'), coca - 1);
-  assert.equal(await qty('i-gao'), rice);
-  await call('POST', '/orders/m-1/void', { reason: 'test' });
-  assert.equal(await qty('i-suon'), suon);
-  assert.equal(await qty('i-hop-mang-ve'), box);
-});
-
-test('estimate stock: kitchen open with defaults, top-up, close with remaining/waste, usage report', async () => {
-  const cur = (await call('GET', '/kitchen/current')).body;
-  assert.equal(cur.session, null);
-  assert.equal(cur.items.find((i: { itemId: string }) => i.itemId === 'i-gao').defaultIssue, 15);
-  const before = await qty('i-gao');
-  const s = (
-    await call('POST', '/kitchen/open', {
-      lines: [
-        { itemId: 'i-gao', qty: 15 },
-        { itemId: 'i-rau', qty: 4 },
-        { itemId: 'i-tra', qty: 100 },
-      ],
-    })
-  ).body;
-  assert.equal(await qty('i-gao'), before - 15);
-  assert.equal((await call('POST', '/kitchen/open', { lines: [{ itemId: 'i-gao', qty: 1 }] })).status, 409);
-  await call('POST', `/kitchen/${s.id}/add`, { lines: [{ itemId: 'i-gao', qty: 5 }] });
-  const noReason = await call('POST', `/kitchen/${s.id}/close`, {
-    lines: [
-      { itemId: 'i-gao', remaining: 2, waste: 1 },
-      { itemId: 'i-rau', remaining: 0 },
-      { itemId: 'i-tra', remaining: 0 },
-    ],
-  });
-  assert.equal(noReason.status, 400);
-  const c = (
-    await call('POST', `/kitchen/${s.id}/close`, {
-      lines: [
-        { itemId: 'i-gao', remaining: 2, waste: 1, reason: 'Cơm khê' },
-        { itemId: 'i-rau', remaining: 0.5 },
-        { itemId: 'i-tra', remaining: 0 },
-      ],
-    })
-  ).body;
-  const g = c.lines.find((l: { itemId: string }) => l.itemId === 'i-gao');
-  assert.deepEqual([g.issued, g.added, g.remaining, g.waste, g.used], [15, 5, 2, 1, 17]);
-  assert.equal(await qty('i-gao'), before - 20 + 2);
-  assert.equal((await call('GET', '/inventory/items/i-gao')).body.tracking, 'estimate');
-  assert.equal((await call('GET', '/inventory/items/i-suon')).body.tracking, 'exact');
-  const types = (await call('GET', '/inventory/moves?itemId=i-gao')).body.moves.map((m: { type: string }) => m.type);
-  assert.ok(types.includes('issue') && types.includes('return'));
-});
-
-test('waste: torn takeaway boxes need a reason', async () => {
-  const b = await qty('i-hop-mang-ve');
-  assert.equal((await call('POST', '/inventory/items/i-hop-mang-ve/waste', { qty: 3 })).status, 400);
-  assert.equal((await call('POST', '/inventory/items/i-hop-mang-ve/waste', { qty: 3, reason: 'Hộp thủng' })).status, 200);
-  assert.equal(await qty('i-hop-mang-ve'), b - 3);
-});
-
 test('product photos are served without login; unknown photo is 404; bad names rejected', async () => {
   const root = base.replace(/\/api$/, '');
   assert.equal((await fetch(`${root}/media/products/khong-co-anh-nay`)).status, 404);
   assert.equal((await fetch(`${root}/media/products/..%2F..%2Fsecret`)).status, 400);
 });
 
-test('Đồ ăn kèm: fries and corn deduct one portion, eggs and sausages are not deducted per sale', () => {
-  assert.deepEqual(recipeFor('Khoai tây chiên'), [{ itemId: 'i-khoai-tay-chien', qty: 1 }]);
-  assert.deepEqual(recipeFor('Ngô chiên'), [{ itemId: 'i-ngo-chien', qty: 1 }]);
-  for (const name of ['Trứng ốp', 'Trứng kho', 'Lạp xưởng', 'Xúc xích']) assert.deepEqual(recipeFor(name), [], name);
+test('Đồ ăn kèm: own prices, rows and photo folder', () => {
   const m = parseMenu(['## 3. Mục Đồ ăn kèm', '**Hàng 1**', '1. Khoai tây chiên – 30.000đ', '2. Trứng ốp – 8.000đ', '**Hàng 2**', '1. Trứng kho – 10.000đ'].join(String.fromCharCode(10)));
   assert.deepEqual(m.products.map((p) => [p.name, p.category, p.price, p.row, p.col, p.image]), [
     ['Khoai tây chiên', 'Đồ ăn kèm', 30000, 0, 0, 'do-an-kem/khoai-tay-chien'],

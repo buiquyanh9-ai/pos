@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { type DB, getSetting, logChange, now, setSetting, slug, tx } from './db.ts';
-import { moveStock } from './inventory.ts';
 import { publish } from './events.ts';
 import { productImagePath } from './productImages.ts';
 
@@ -11,7 +10,6 @@ import { productImagePath } from './productImages.ts';
 //   1. Cơm trắng sườn                     -> slot 1, row price
 //   1. Rau thêm – 10.000đ                 -> slot 1, own price
 //   4. Slot trống                         -> empty slot (kept in the grid)
-// Stock rules (section 5 of the file) are applied by name, see recipeFor().
 
 export interface MenuProduct {
   id: string;
@@ -83,71 +81,6 @@ export function parseMenu(md: string): ParsedMenu {
   return { categories, products, warnings };
 }
 
-// ---------------------------------------------------------------- stock rules (section 5)
-// Exact stock: counted units, deducted per portion sold. Estimate stock: shown as "còn khoảng",
-// managed by the kitchen open/close flow; only takeaway boxes are deducted automatically.
-export const MENU_ITEMS: { id: string; name: string; unit: string; kind: 'ingredient' | 'goods'; tracking: 'exact' | 'estimate'; min: number; defaultIssue?: number; sample: number }[] = [
-  { id: 'i-suon', name: 'Sườn', unit: 'phần', kind: 'ingredient', tracking: 'exact', min: 10, sample: 60 },
-  { id: 'i-xa-xiu', name: 'Xá xíu', unit: 'phần', kind: 'ingredient', tracking: 'exact', min: 10, sample: 50 },
-  { id: 'i-ga', name: 'Gà', unit: 'phần', kind: 'ingredient', tracking: 'exact', min: 10, sample: 50 },
-  { id: 'i-bo', name: 'Bò', unit: 'phần', kind: 'ingredient', tracking: 'exact', min: 10, sample: 40 },
-  { id: 'i-ca-kho', name: 'Cá kho', unit: 'phần', kind: 'ingredient', tracking: 'exact', min: 10, sample: 40 },
-  { id: 'i-sua-dau', name: 'Sữa đậu', unit: 'chai', kind: 'goods', tracking: 'exact', min: 12, sample: 48 },
-  { id: 'i-coca-cola', name: 'Coca-Cola', unit: 'chai', kind: 'goods', tracking: 'exact', min: 12, sample: 48 },
-  { id: 'i-nuoc-gao', name: 'Nước gạo', unit: 'chai', kind: 'goods', tracking: 'exact', min: 12, sample: 36 },
-  { id: 'i-nuoc-loc', name: 'Nước lọc', unit: 'chai', kind: 'goods', tracking: 'exact', min: 24, sample: 72 },
-  { id: 'i-gao', name: 'Gạo', unit: 'kg', kind: 'ingredient', tracking: 'estimate', min: 30, defaultIssue: 15, sample: 100 },
-  { id: 'i-rau', name: 'Rau', unit: 'kg', kind: 'ingredient', tracking: 'estimate', min: 4, defaultIssue: 4, sample: 12 },
-  { id: 'i-tra', name: 'Trà', unit: 'g', kind: 'ingredient', tracking: 'estimate', min: 200, defaultIssue: 100, sample: 1000 },
-  { id: 'i-hop-mang-ve', name: 'Hộp mang về', unit: 'hộp', kind: 'ingredient', tracking: 'estimate', min: 50, sample: 300 },
-  // Đồ ăn kèm: fries and corn are counted per portion; eggs (shared with cơm đảo) and sausages (by bag) are estimates.
-  { id: 'i-khoai-tay-chien', name: 'Khoai tây chiên', unit: 'phần', kind: 'ingredient', tracking: 'exact', min: 10, sample: 30 },
-  { id: 'i-ngo-chien', name: 'Ngô chiên', unit: 'phần', kind: 'ingredient', tracking: 'exact', min: 10, sample: 30 },
-  { id: 'i-trung', name: 'Trứng', unit: 'quả', kind: 'ingredient', tracking: 'estimate', min: 20, sample: 60 },
-  { id: 'i-lap-xuong', name: 'Lạp xưởng', unit: 'túi', kind: 'ingredient', tracking: 'estimate', min: 2, sample: 5 },
-  { id: 'i-xuc-xich', name: 'Xúc xích', unit: 'túi', kind: 'ingredient', tracking: 'estimate', min: 2, sample: 5 },
-];
-
-const CAFE_SAMPLE_ITEMS = [
-  'i-ca-phe-hat', 'i-sua-dac', 'i-sua-tuoi', 'i-duong', 'i-da', 'i-tra-den', 'i-dao-ngam',
-  'i-tran-chau', 'i-banh-mi', 'i-thit-nguoi', 'i-ly-nhua', 'i-nuoc-suoi', 'i-coca',
-];
-
-const MEATS: [RegExp, string][] = [
-  [/sườn/i, 'i-suon'],
-  [/xá xíu/i, 'i-xa-xiu'],
-  [/(^|\s)gà(\s|$)/i, 'i-ga'],
-  [/(^|\s)bò(\s|$)/i, 'i-bo'],
-  [/cá kho/i, 'i-ca-kho'],
-];
-// Sides counted exactly: one portion per dish sold. Eggs, lạp xưởng and xúc xích are not deducted per sale.
-const SIDES: [RegExp, string][] = [
-  [/khoai tây chiên/i, 'i-khoai-tay-chien'],
-  [/ngô chiên/i, 'i-ngo-chien'],
-];
-const DRINKS: [RegExp, string][] = [
-  [/sữa đậu/i, 'i-sua-dau'],
-  [/coca/i, 'i-coca-cola'],
-  [/nước gạo/i, 'i-nuoc-gao'],
-  [/nước lọc/i, 'i-nuoc-loc'],
-];
-
-/** Stock consumed by one portion. Rice/vegetables/tea are never deducted per sale. */
-export function recipeFor(name: string): { itemId: string; qty: number }[] {
-  const out: { itemId: string; qty: number }[] = [];
-  const meat = MEATS.find(([re]) => re.test(name));
-  if (meat) out.push({ itemId: meat[1], qty: 1 });
-  const side = SIDES.find(([re]) => re.test(name));
-  if (side) out.push({ itemId: side[1], qty: 1 });
-  const drink = DRINKS.find(([re]) => re.test(name));
-  if (drink) out.push({ itemId: drink[1], qty: 1 });
-  // One takeaway box per rice portion or extra meat/fish portion (not for extra rice / vegetables).
-  const takeaway = /mang về/i.test(name);
-  const isRicePortion = /^cơm (trắng|đảo)/i.test(name) && !/thêm/i.test(name);
-  if (takeaway && (isRicePortion || meat)) out.push({ itemId: 'i-hop-mang-ve', qty: 1 });
-  return out;
-}
-
 export interface ImportResult {
   changed: boolean;
   categories: number;
@@ -156,9 +89,8 @@ export interface ImportResult {
   warnings: string[];
 }
 
-/** Make the database match the menu file. Idempotent; stock quantities are never overwritten
- *  (sampleStock only seeds opening stock for items created now, marked as sample data). */
-export function importMenu(db: DB, md: string, opts: { sampleStock?: boolean; force?: boolean; tables?: number } = {}): ImportResult {
+/** Make the database match the menu file. Idempotent. */
+export function importMenu(db: DB, md: string, opts: { force?: boolean; tables?: number } = {}): ImportResult {
   const hash = createHash('sha256').update(md).digest('hex');
   const menu = parseMenu(md);
   if (!opts.force && getSetting(db, 'menu_hash') === hash) {
@@ -178,19 +110,6 @@ export function importMenu(db: DB, md: string, opts: { sampleStock?: boolean; fo
     const keepCats = menu.categories.map((c) => `c-${slug(c)}`);
     db.prepare(`UPDATE categories SET active = 0 WHERE id NOT IN (${keepCats.map(() => '?').join(',')})`).run(...keepCats);
 
-    for (const it of MENU_ITEMS) {
-      const exists = db.prepare('SELECT 1 FROM inventory_items WHERE id = ?').get(it.id);
-      if (!exists) {
-        db.prepare(
-          `INSERT INTO inventory_items (id, name, unit, kind, qty, min_qty, unit_cost, active, tracking, default_issue, updated_at)
-           VALUES (?, ?, ?, ?, 0, ?, 0, 1, ?, ?, ?)`,
-        ).run(it.id, it.name, it.unit, it.kind, it.min, it.tracking, it.defaultIssue ?? null, now());
-        if (opts.sampleStock) moveStock(db, it.id, it.sample, { type: 'adjust', reason: 'Tồn đầu kỳ (dữ liệu mẫu)' });
-      } else {
-        db.prepare('UPDATE inventory_items SET tracking = ?, default_issue = COALESCE(default_issue, ?), active = 1 WHERE id = ?').run(it.tracking, it.defaultIssue ?? null, it.id);
-      }
-    }
-
     for (const p of menu.products) {
       const catId = `c-${slug(p.category)}`;
       db.prepare(
@@ -200,13 +119,9 @@ export function importMenu(db: DB, md: string, opts: { sampleStock?: boolean; fo
            price = excluded.price, image_url = excluded.image_url, grid_row = excluded.grid_row, grid_col = excluded.grid_col,
            sort = excluded.sort, active = 1, updated_at = excluded.updated_at`,
       ).run(p.id, p.name, p.category, catId, p.price, `/media/products/${p.image}`, p.row, p.col, p.row * 10 + p.col, now());
-      db.prepare('DELETE FROM recipes WHERE product_id = ?').run(p.id);
-      for (const r of recipeFor(p.name)) db.prepare('INSERT INTO recipes (product_id, item_id, qty) VALUES (?, ?, ?)').run(p.id, r.itemId, r.qty);
       db.prepare('DELETE FROM product_option_groups WHERE product_id = ?').run(p.id);
       logChange(db, 'product', p.id, 'upsert');
     }
-    // The built-in café sample (seed.ts) is not part of a real menu: hide its stock items.
-    db.prepare(`UPDATE inventory_items SET active = 0 WHERE id IN (${CAFE_SAMPLE_ITEMS.map(() => '?').join(',')})`).run(...CAFE_SAMPLE_ITEMS);
     const keep = menu.products.map((p) => p.id);
     deactivated = Number(
       db.prepare(`UPDATE products SET active = 0, updated_at = ? WHERE active = 1 AND id NOT IN (${keep.map(() => '?').join(',')})`).run(now(), ...keep).changes,

@@ -31,7 +31,7 @@ export function publicAuthRoutes(db: DB) {
 
   // Staff picker for the POS PIN login screen: names only, no secrets.
   r.get('/auth/staff', (_req, res) => {
-    const rows = db.prepare("SELECT * FROM users WHERE active = 1 AND pin_hash IS NOT NULL ORDER BY CASE role WHEN 'cashier' THEN 0 WHEN 'stock' THEN 1 ELSE 2 END, name").all();
+    const rows = db.prepare("SELECT * FROM users WHERE active = 1 AND pin_hash IS NOT NULL ORDER BY CASE role WHEN 'cashier' THEN 0 ELSE 1 END, name").all();
     res.json({ staff: rows.map((u) => ({ id: u.id, username: u.username, name: u.name, role: u.role })) });
   });
 
@@ -81,7 +81,7 @@ export function authRoutes(db: DB) {
 
   const readRole = (v: unknown, optional: boolean): Role | undefined => {
     const role = str(v, 'role', { optional, max: 16 }) as Role | undefined;
-    if (role !== undefined && !ROLES.includes(role)) throw bad('role must be owner, cashier or stock');
+    if (role !== undefined && !ROLES.includes(role)) throw bad('role must be owner or cashier');
     return role;
   };
   const readPin = (v: unknown) => {

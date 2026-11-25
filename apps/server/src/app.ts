@@ -12,10 +12,8 @@ import { hardwareRouter } from './hardwareRoutes.ts';
 import { authRoutes, publicAuthRoutes } from './routes/auth.ts';
 import { catalogRoutes } from './routes/catalog.ts';
 import { salesRoutes } from './routes/sales.ts';
-import { inventoryRoutes } from './routes/inventory.ts';
 import { miscRoutes } from './routes/misc.ts';
 import { openOrderRoutes } from './routes/openOrders.ts';
-import { kitchenRoutes } from './routes/kitchen.ts';
 import { storeRoutes } from './routes/store.ts';
 
 export const API_VERSION = '2';
@@ -104,10 +102,8 @@ export function createApp({ db, apiKey }: AppOptions) {
   app.use('/api', authRoutes(db));
   app.use('/api', catalogRoutes(db));
   app.use('/api', salesRoutes(db));
-  app.use('/api', inventoryRoutes(db));
   app.use('/api', miscRoutes(db));
   app.use('/api', openOrderRoutes(db));
-  app.use('/api', kitchenRoutes(db));
   app.use('/api', storeRoutes(db));
   app.use('/api/hardware', hardwareRouter);
 

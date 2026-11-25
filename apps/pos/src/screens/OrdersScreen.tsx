@@ -199,13 +199,12 @@ const REFUND_REASONS = ['Món lỗi / không đạt', 'Khách đổi ý', 'Làm 
 function OrderDetail({ order: o, onClose, onChanged, onEdit, inline }: { order: LocalOrder; onClose: () => void; onChanged: () => void; onEdit?: (o: LocalOrder) => void; inline?: boolean }) {
   const [action, setAction] = useState<'void' | 'refund' | 'edit' | null>(null);
   const [reason, setReason] = useState('');
-  const [restock, setRestock] = useState(false);
   const [busy, setBusy] = useState(false);
   const run = async () => {
     setBusy(true);
     try {
       if (action === 'void' || action === 'edit') await voidOrder(o.id, action === 'edit' ? `Sửa đơn: ${reason}` : reason);
-      else await refundOrder(o.id, reason, restock);
+      else await refundOrder(o.id, reason);
       if (action === 'edit') {
         setAction(null);
         onChanged();
@@ -275,9 +274,9 @@ function OrderDetail({ order: o, onClose, onChanged, onEdit, inline }: { order: 
         <div className="reason-box">
           <strong>
             {action === 'void'
-              ? 'Huỷ đơn (nhập nhầm / chưa làm món): kho được hoàn lại'
+              ? 'Huỷ đơn (nhập nhầm / chưa làm món): đơn không tính vào doanh thu'
               : action === 'edit'
-                ? 'Sửa đơn: đơn này sẽ được huỷ (kho hoàn lại) và nạp lại vào giỏ để chỉnh rồi thanh toán lại'
+                ? 'Sửa đơn: đơn này sẽ được huỷ và nạp lại vào giỏ để chỉnh rồi thanh toán lại'
                 : `Hoàn tiền ${money(o.total)} cho khách`}
           </strong>
           <div className="opt-row">
@@ -288,11 +287,6 @@ function OrderDetail({ order: o, onClose, onChanged, onEdit, inline }: { order: 
             ))}
           </div>
           <input className="opt-note" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Lý do (bắt buộc)" />
-          {action === 'refund' && (
-            <label className="check">
-              <input type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} /> Nhập lại kho (hàng chưa dùng, vd chai nước chưa mở)
-            </label>
-          )}
           <div className="cart-actions">
             <button className="btn secondary" onClick={() => (setAction(null), setReason(''))}>
               Thôi
@@ -322,7 +316,7 @@ function OrderDetail({ order: o, onClose, onChanged, onEdit, inline }: { order: 
             <button className="btn danger" onClick={() => (setAction('void'), setReason(''))}>
               Huỷ đơn
             </button>
-            <button className="btn danger" onClick={() => (setAction('refund'), setReason(''), setRestock(false))}>
+            <button className="btn danger" onClick={() => (setAction('refund'), setReason(''))}>
               Hoàn tiền
             </button>
           </>

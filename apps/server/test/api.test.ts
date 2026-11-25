@@ -20,7 +20,7 @@ before(async () => {
   for (const [who, body] of [
     ['owner', { username: 'chu', password: 'chu123456' }],
     ['cashier', { username: 'thungan', pin: '1111' }],
-    ['stock', { username: 'thungan2', pin: '2222' }],
+    ['minh', { username: 'thungan2', pin: '2222' }],
   ] as const) {
     const r = await call('POST', '/auth/login', body, null);
     assert.equal(r.status, 200, `login ${who}`);
@@ -29,7 +29,7 @@ before(async () => {
 });
 after(() => server.close());
 
-type Who = 'owner' | 'cashier' | 'stock' | null;
+type Who = 'owner' | 'cashier' | 'minh' | null;
 async function call(method: string, path: string, body?: unknown, who: Who = 'owner') {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (who) headers.authorization = `Bearer ${tokens[who]}`;
@@ -38,7 +38,6 @@ async function call(method: string, path: string, body?: unknown, who: Who = 'ow
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
-const item = async (id: string) => (await call('GET', `/inventory/items/${id}`)).body;
 const product = async (id: string) => (await call('GET', `/products/${id}`)).body;
 let seq = 0;
 const order = (extra: Record<string, unknown> = {}) => ({
@@ -67,11 +66,13 @@ test('wrong PIN is rejected; me returns the user', async () => {
 
 test('roles are enforced', async () => {
   assert.equal((await call('POST', '/products', { name: 'X', price: 1 }, 'cashier')).status, 403);
-  assert.equal((await call('GET', '/users', undefined, 'stock')).status, 403);
-  // The former stock-staff account is now a cashier: it can sell and do stock work, not owner tasks.
-  assert.equal((await call('GET', '/auth/me', undefined, 'stock')).body.user.role, 'cashier');
-  assert.equal((await call('POST', '/categories', { name: 'X' }, 'stock')).status, 403);
+  assert.equal((await call('GET', '/users', undefined, 'minh')).status, 403);
+  // The former stock-staff account is now a cashier: it can sell, not do owner tasks.
+  assert.equal((await call('GET', '/auth/me', undefined, 'minh')).body.user.role, 'cashier');
+  assert.equal((await call('POST', '/categories', { name: 'X' }, 'minh')).status, 403);
   assert.equal((await call('GET', `/reports/summary?from=2020-01-01T00:00:00Z&to=2030-01-01T00:00:00Z`, undefined, 'cashier')).status, 400);
+  // The inventory module is gone.
+  assert.equal((await call('GET', '/inventory/items')).status, 404);
 });
 
 test('owner manages staff; cannot demote the last owner', async () => {
@@ -84,55 +85,45 @@ test('owner manages staff; cannot demote the last owner', async () => {
 });
 
 // ---------------------------------------------------------------- catalog
-test('products expose category, options, recipe, cost and BOM availability', async () => {
+test('products expose category, options and an optional manual cost; no stock fields', async () => {
   const { body } = await call('GET', '/products', undefined, 'cashier');
   const cf = body.products.find((p: { id: string }) => p.id === 'p-cf-sua');
   assert.equal(cf.category, 'Cà phê');
   assert.ok(cf.optionGroups.some((g: { name: string }) => g.name === 'Size'));
-  assert.ok(cf.recipe.length >= 3);
-  assert.ok(cf.cost > 0 && cf.cost < cf.price);
-  assert.equal(typeof cf.stock, 'number');
+  assert.equal(cf.cost, null);
+  assert.ok(!('stock' in cf) && !('recipe' in cf));
   assert.ok(body.categories.length >= 4);
 });
 
-test('owner creates a product with a recipe; untracked products report stock null', async () => {
+test('owner creates a product with a manual cost and can clear it', async () => {
   const p = await call('POST', '/products', { name: 'Bánh flan', price: 15000, category: 'Tráng miệng', cost: 6000 });
   assert.equal(p.status, 201);
-  assert.equal(p.body.stock, null);
   assert.equal(p.body.cost, 6000);
   assert.equal(p.body.category, 'Tráng miệng');
-  const q = await call('PUT', `/products/${p.body.id}`, { recipe: [{ itemId: 'i-sua-tuoi', qty: 0.1 }] });
+  const q = await call('PUT', `/products/${p.body.id}`, { cost: null });
   assert.equal(q.status, 200);
-  assert.equal(typeof q.body.stock, 'number');
-  assert.equal((await call('PUT', `/products/${p.body.id}`, { recipe: [{ itemId: 'nope', qty: 1 }] })).status, 400);
+  assert.equal(q.body.cost, null);
 });
 
-test('an ingredient with no price entered makes the cost unknown, not 0đ (no fake 100% profit)', async () => {
-  const ing = await call('POST', '/inventory/items', { name: 'Sườn (chưa có giá)', unit: 'phần' });
-  assert.equal(ing.status, 201);
+test('a product with no cost entered makes the order cost unknown, not 0đ (no fake 100% profit)', async () => {
   const p = await call('POST', '/products', { name: 'Cơm sườn thử', price: 50000, category: 'Cơm' });
-  assert.equal((await call('PUT', `/products/${p.body.id}`, { recipe: [{ itemId: ing.body.id, qty: 1 }] })).status, 200);
   assert.equal((await product(p.body.id)).cost, null);
   const o = await call('POST', '/orders', order({ items: [{ productId: p.body.id, name: 'Cơm sườn thử', price: 50000, qty: 1 }], paid: 50000 }), 'cashier');
   assert.equal(o.status, 201);
   assert.equal(o.body.costTotal, null);
 });
 
-// ---------------------------------------------------------------- sales & stock
-test('a sale deducts recipe stock exactly once, even when uploaded twice or concurrently', async () => {
-  const before = await item('i-sua-dac');
+test('an order is stored exactly once, even when uploaded twice or concurrently', async () => {
   const o = order();
   const [a, b] = await Promise.all([call('POST', '/orders', o, 'cashier'), call('POST', '/orders', o, 'cashier')]);
   assert.deepEqual([a.status, b.status].sort(), [200, 201]);
   const again = await call('POST', '/orders', o, 'cashier');
   assert.equal(again.body.duplicate, true);
-  const after = await item('i-sua-dac');
-  assert.equal(Math.round((before.qty - after.qty) * 1000) / 1000, 0.06); // 2 x 0.03 kg
   const created = a.status === 201 ? a.body : b.body;
   assert.equal(created.cashier, 'Kim');
-  assert.ok(created.costTotal > 0);
-  const moves = await call('GET', `/inventory/moves?itemId=i-sua-dac&type=sale`);
-  assert.equal(moves.body.moves.filter((m: { refId: string }) => m.refId === o.id).length, 1);
+  assert.equal(created.total, 50000);
+  const list = (await call('GET', '/orders?deviceId=pos-1&limit=1000')).body.orders;
+  assert.equal(list.filter((x: { id: string }) => x.id === o.id).length, 1);
 });
 
 test('order validation', async () => {
@@ -146,15 +137,12 @@ test('order validation', async () => {
   assert.equal((await call('POST', '/orders', order({ discount: 999999 }), 'cashier')).status, 400);
 });
 
-test('void restocks; refund keeps stock unless restock=true; both need a reason and only once', async () => {
+test('void and refund need a reason and happen only once; refund records the amount', async () => {
   const o = order({ items: [{ productId: 'p-nuoc-suoi', name: 'Nước suối', price: 10000, qty: 3 }], paid: 30000 });
-  const before = (await item('i-nuoc-suoi')).qty;
   await call('POST', '/orders', o, 'cashier');
-  assert.equal((await item('i-nuoc-suoi')).qty, before - 3);
   assert.equal((await call('POST', `/orders/${o.id}/void`, {}, 'cashier')).status, 400);
   const v = await call('POST', `/orders/${o.id}/void`, { reason: 'Nhập nhầm' }, 'cashier');
   assert.equal(v.body.status, 'voided');
-  assert.equal((await item('i-nuoc-suoi')).qty, before);
   assert.equal((await call('POST', `/orders/${o.id}/refund`, { reason: 'x' }, 'cashier')).status, 409);
 
   const o2 = order({ items: [{ productId: 'p-nuoc-suoi', name: 'Nước suối', price: 10000, qty: 1 }], paid: 10000 });
@@ -162,22 +150,10 @@ test('void restocks; refund keeps stock unless restock=true; both need a reason 
   const r = await call('POST', `/orders/${o2.id}/refund`, { reason: 'Khách trả' }, 'cashier');
   assert.equal(r.body.status, 'refunded');
   assert.equal(r.body.refundAmount, 10000);
-  assert.equal((await item('i-nuoc-suoi')).qty, before - 1); // not restocked
+  const n = (await call('GET', '/notifications')).body.notifications;
+  assert.ok(n.some((x: { type: string }) => x.type === 'order.voided') && n.some((x: { type: string }) => x.type === 'order.refunded'));
 });
 
-test('crossing below minimum creates one stock.low notification', async () => {
-  const it = await item('i-coca'); // min 12
-  const toSell = Math.ceil(it.qty - it.minQty) + 1;
-  await call('POST', '/orders', order({ items: [{ productId: 'p-coca', name: 'Coca', price: 15000, qty: toSell }], paid: 15000 * toSell }), 'cashier');
-  await call('POST', '/orders', order({ items: [{ productId: 'p-coca', name: 'Coca', price: 15000, qty: 1 }], paid: 15000 }), 'cashier');
-  const n = await call('GET', '/notifications');
-  assert.equal(n.body.notifications.filter((x: { type: string; data: { itemId: string } }) => x.type === 'stock.low' && x.data.itemId === 'i-coca').length, 1);
-  const low = await call('GET', '/inventory/items?low=1', undefined, 'stock');
-  assert.ok(low.body.items.some((i: { id: string }) => i.id === 'i-coca'));
-  assert.equal((await product('p-coca')).stock, Math.max(0, Math.floor((await item('i-coca')).qty)));
-});
-
-// ---------------------------------------------------------------- shifts & stocktake
 test('shift: open, sell cash, close with counted cash, report and notification', async () => {
   const open = await call('POST', '/shifts/open', { deviceId: 'pos-shift', openingCash: 500000 }, 'cashier');
   assert.equal(open.status, 201);
@@ -204,47 +180,17 @@ test('shift belongs to the person: kept open after logout, others on the device 
   const kim = await call('POST', '/shifts/open', { deviceId: 'pos-share', openingCash: 0 }, 'cashier');
   assert.equal(kim.status, 201);
   // Minh logs in on the same device: no shift for him yet, and he can open his own.
-  assert.equal((await call('GET', '/shifts/current?deviceId=pos-share', undefined, 'stock')).body.shift, null);
-  const minh = await call('POST', '/shifts/open', { deviceId: 'pos-share', openingCash: 0 }, 'stock');
+  assert.equal((await call('GET', '/shifts/current?deviceId=pos-share', undefined, 'minh')).body.shift, null);
+  const minh = await call('POST', '/shifts/open', { deviceId: 'pos-share', openingCash: 0 }, 'minh');
   assert.equal(minh.status, 201);
   // Kim comes back (even on another device) and gets her own open shift.
   assert.equal((await call('GET', '/shifts/current?deviceId=pos-other', undefined, 'cashier')).body.shift.id, kim.body.id);
-  assert.equal((await call('GET', '/shifts/current?deviceId=pos-share', undefined, 'stock')).body.shift.id, minh.body.id);
-  for (const [id, who] of [[kim.body.id, 'cashier'], [minh.body.id, 'stock']] as const) {
+  assert.equal((await call('GET', '/shifts/current?deviceId=pos-share', undefined, 'minh')).body.shift.id, minh.body.id);
+  for (const [id, who] of [[kim.body.id, 'cashier'], [minh.body.id, 'minh']] as const) {
     assert.equal((await call('POST', `/shifts/${id}/close`, { countedCash: 0 }, who)).status, 200);
   }
 });
 
-test('stocktake records variance, adjusts stock, requires a reason and notifies', async () => {
-  const it = await item('i-duong');
-  assert.equal((await call('POST', '/inventory/stocktakes', { lines: [{ itemId: 'i-duong', counted: it.qty - 0.5 }] }, 'stock')).status, 400);
-  const st = await call('POST', '/inventory/stocktakes', { lines: [{ itemId: 'i-duong', counted: it.qty - 0.5, reason: 'Rơi vãi' }, { itemId: 'i-da', counted: (await item('i-da')).qty }] }, 'stock');
-  assert.equal(st.status, 201);
-  assert.equal(st.body.varianceCount, 1);
-  assert.equal(st.body.lines[0].diff, -0.5);
-  assert.equal((await item('i-duong')).qty, Math.round((it.qty - 0.5) * 1000) / 1000);
-  const n = await call('GET', '/notifications');
-  assert.ok(n.body.notifications.some((x: { type: string }) => x.type === 'stock.variance'));
-});
-
-// ---------------------------------------------------------------- purchasing
-test('purchase: stock proposes, owner approves, stock receives, quantity and cost update', async () => {
-  const before = await item('i-tra-den');
-  const p = await call('POST', '/purchases', { supplierId: 's-sua', lines: [{ itemId: 'i-tra-den', qty: 2, unitCost: 190000 }] }, 'stock');
-  assert.equal(p.body.status, 'pending');
-  assert.equal((await call('POST', `/purchases/${p.body.id}/receive`, {}, 'stock')).status, 409);
-  assert.equal((await call('POST', `/purchases/${p.body.id}/approve`, {}, 'stock')).status, 403);
-  assert.equal((await call('POST', `/purchases/${p.body.id}/approve`, { note: 'OK' })).body.status, 'approved');
-  const rec = await call('POST', `/purchases/${p.body.id}/receive`, { lines: [{ itemId: 'i-tra-den', receivedQty: 1.8 }] }, 'stock');
-  assert.equal(rec.body.status, 'received');
-  const after = await item('i-tra-den');
-  assert.equal(Math.round((after.qty - before.qty) * 1000) / 1000, 1.8);
-  assert.equal(after.unitCost, 190000);
-  const sug = await call('GET', '/purchases/suggestions', undefined, 'stock');
-  assert.ok(Array.isArray(sug.body.lines));
-});
-
-// ---------------------------------------------------------------- reports
 test('reports: exact time window, hourly buckets, refunds at refund time, voids excluded', async () => {
   const at = (h: number, m = 0) => new Date(Date.UTC(2026, 0, 10, h - 7, m)).toISOString(); // local 2026-01-10 h:m (UTC+7)
   const mk = (h: number, m: number, total: number, extra = {}) =>
@@ -266,8 +212,7 @@ test('reports: exact time window, hourly buckets, refunds at refund time, voids 
   assert.deepEqual(s.byHour[9].byMethod, { transfer: 40000 });
   assert.equal(s.byPayment.find((x: { method: string }) => x.method === 'transfer').revenue, 40000);
   assert.equal(s.byCategory[0].category, 'Cà phê');
-  assert.ok(s.hasCostData);
-  assert.equal(s.grossProfit, s.netRevenue - s.costOfGoods);
+  assert.equal(s.grossProfit, null); // no cost entered for these products
   const cmp = (await call('GET', `/reports/summary?${q}&compare=1&deviceId=pos-1`)).body;
   assert.ok('previous' in cmp && 'change' in cmp);
 });
@@ -275,7 +220,7 @@ test('reports: exact time window, hourly buckets, refunds at refund time, voids 
 test('dashboard, activity and sync feed for Boss', async () => {
   const d = await call('GET', '/dashboard');
   assert.equal(d.status, 200);
-  assert.ok('today' in d.body && typeof d.body.lowStockCount === 'number');
+  assert.ok('today' in d.body && typeof d.body.openShifts === 'number' && !('lowStockCount' in d.body));
   const a = await call('GET', '/activity?limit=5');
   assert.ok(a.body.orders.length > 0);
   const f = await call('GET', '/sync/changes?since=0&limit=1000');
@@ -288,10 +233,12 @@ test('notification read state and preferences', async () => {
   assert.ok(list.body.unread > 0);
   await call('POST', '/notifications/read', { ids: 'all' });
   assert.equal((await call('GET', '/notifications')).body.unread, 0);
-  await call('PUT', '/notifications/prefs', { prefs: [{ type: 'stock.low', enabled: false }] });
+  await call('PUT', '/notifications/prefs', { prefs: [{ type: 'order.voided', enabled: false }] });
   const prefs = await call('GET', '/notifications/prefs');
-  assert.equal(prefs.body.prefs.find((p: { type: string }) => p.type === 'stock.low').enabled, false);
-  assert.ok(!(await call('GET', '/notifications')).body.notifications.some((x: { type: string }) => x.type === 'stock.low'));
+  assert.equal(prefs.body.prefs.find((p: { type: string }) => p.type === 'order.voided').enabled, false);
+  assert.ok(!prefs.body.prefs.some((p: { type: string }) => p.type.startsWith('stock.') || p.type.startsWith('purchase.')));
+  assert.ok(!(await call('GET', '/notifications')).body.notifications.some((x: { type: string }) => x.type === 'order.voided'));
+  await call('PUT', '/notifications/prefs', { prefs: [{ type: 'order.voided', enabled: true }] });
 });
 
 test('SSE stream delivers order.created', async () => {
@@ -315,76 +262,47 @@ test('service API key acts as owner', async () => {
   assert.equal(res.status, 200);
 });
 
-// ---------------------------------------------------------------- CLAUDE.md §4: the mandatory end-to-end flow
-test('E2E: POS sale -> stock -> Boss revenue -> low-stock alert -> stocktake -> purchase approve/receive -> stock on both apps', async () => {
-  await call('PUT', '/notifications/prefs', { prefs: [{ type: 'stock.low', enabled: true }] }); // an earlier test turned it off
-  // Make "Bánh mì ổ" the bottleneck: leave just above its minimum (15).
-  const start = await item('i-banh-mi');
-  await call('POST', '/inventory/items/i-banh-mi/adjust', { qty: 16, reason: 'E2E setup' }, 'stock');
+// ---------------------------------------------------------------- end-to-end flow (POS -> server -> Boss)
+test('E2E: POS shift and sale -> Boss revenue -> refund lowers revenue -> shift close report and notification', async () => {
   const dashBefore = (await call('GET', '/dashboard')).body.today;
 
-  // 1. Cashier opens a shift and sells 2 bánh mì on the POS.
-  const shift = (await call('POST', '/shifts/open', { deviceId: 'pos-e2e', openingCash: 0 }, 'cashier')).body;
-  const sale = order({ deviceId: 'pos-e2e', shiftId: shift.id, items: [{ productId: 'p-banh-mi', name: 'Bánh mì thịt', price: 25000, qty: 2 }], paid: 50000 });
-  assert.equal((await call('POST', '/orders', sale, 'cashier')).status, 201);
+  // 1. Cashier opens a shift and sells 2 bánh mì (cash) and 1 coffee (transfer) on the POS.
+  const shift = (await call('POST', '/shifts/open', { deviceId: 'pos-e2e', openingCash: 100000 }, 'cashier')).body;
+  const cash = order({ deviceId: 'pos-e2e', shiftId: shift.id, items: [{ productId: 'p-banh-mi', name: 'Bánh mì thịt', price: 25000, qty: 2 }], paid: 100000 });
+  const transfer = order({ deviceId: 'pos-e2e', shiftId: shift.id, paymentMethod: 'transfer', items: [{ productId: 'p-cf-den', name: 'Cà phê đen', price: 20000, qty: 1 }], paid: 20000 });
+  assert.equal((await call('POST', '/orders', cash, 'cashier')).body.change, 50000);
+  assert.equal((await call('POST', '/orders', transfer, 'cashier')).status, 201);
 
-  // 2. Backend stored it and deducted stock (16 - 2 = 14, below min 15).
-  assert.equal((await item('i-banh-mi')).qty, 14);
-
-  // 3. Boss dashboard shows the new revenue and order.
+  // 2. Boss dashboard shows the new revenue and orders.
   const dashAfter = (await call('GET', '/dashboard')).body.today;
-  assert.equal(dashAfter.netRevenue - dashBefore.netRevenue, 50000);
-  assert.equal(dashAfter.orderCount - dashBefore.orderCount, 1);
+  assert.equal(dashAfter.netRevenue - dashBefore.netRevenue, 70000);
+  assert.equal(dashAfter.orderCount - dashBefore.orderCount, 2);
 
-  // 4. Low-stock alert was raised for the owner.
+  // 3. A refund lowers today's net revenue at refund time and notifies the owner.
+  await call('POST', `/orders/${transfer.id}/refund`, { reason: 'Khách đổi ý', shiftId: shift.id }, 'cashier');
+  assert.equal((await call('GET', '/dashboard')).body.today.netRevenue - dashBefore.netRevenue, 50000);
+
+  // 4. Shift close: expected cash = opening + cash sales; report and notification for the owner.
+  const closed = (await call('POST', `/shifts/${shift.id}/close`, { countedCash: 150000 }, 'cashier')).body;
+  assert.equal(closed.shift.expectedCash, 150000);
+  assert.equal(closed.shift.cashDifference, 0);
+  assert.ok(!('stocktakes' in closed));
   const notes = (await call('GET', '/notifications')).body.notifications;
-  assert.ok(notes.some((n: { type: string; data: { itemId?: string } }) => n.type === 'stock.low' && n.data?.itemId === 'i-banh-mi'));
-
-  // 5. End of shift: staff counts 13 (1 missing) and records the variance.
-  const st = await call('POST', '/inventory/stocktakes', { shiftId: shift.id, lines: [{ itemId: 'i-banh-mi', counted: 13, reason: 'Hỏng 1 ổ' }] }, 'stock');
-  assert.equal(st.body.lines[0].diff, -1);
-  await call('POST', `/shifts/${shift.id}/close`, { countedCash: 50000 }, 'cashier');
-  const report = (await call('GET', `/shifts/${shift.id}/report`)).body;
-  assert.equal(report.shift.cashDifference, 0);
-  assert.equal(report.stocktakes.length, 1);
-
-  // 6. Owner reviews and the stock clerk proposes a purchase; owner approves on the phone.
-  const sug = (await call('GET', '/purchases/suggestions', undefined, 'stock')).body.lines.find((l: { itemId: string }) => l.itemId === 'i-banh-mi');
-  assert.ok(sug && sug.qty > 0);
-  const pr = (await call('POST', '/purchases', { lines: [{ itemId: 'i-banh-mi', qty: sug.qty }] }, 'stock')).body;
-  assert.equal(pr.status, 'pending');
-  assert.equal((await call('POST', `/purchases/${pr.id}/approve`, {})).body.status, 'approved');
-
-  // 7. Goods received -> stock updated, visible to POS (product availability) and Boss (inventory).
-  await call('POST', `/purchases/${pr.id}/receive`, {}, 'stock');
-  const after = await item('i-banh-mi');
-  assert.equal(after.qty, 13 + sug.qty);
-  assert.equal(after.low, false);
-  assert.ok((await product('p-banh-mi')).stock >= 13 + sug.qty - 1);
-  // History shows every step.
-  const types = (await call('GET', '/inventory/moves?itemId=i-banh-mi')).body.moves.map((m: { type: string }) => m.type);
-  for (const t of ['adjust', 'sale', 'count', 'import']) assert.ok(types.includes(t), `missing ${t}`);
-  void start;
+  assert.ok(notes.some((n: { type: string; data: { shiftId?: string } }) => n.type === 'shift.closed' && n.data?.shiftId === shift.id));
 });
 
-test('options scale the recipe (size L) and add their own stock (topping); void returns exactly that', async () => {
-  const tea0 = (await item('i-tra-den')).qty;
-  const pearl0 = (await item('i-tran-chau')).qty;
+test('options are stored on the line with their names; bad option ids are rejected', async () => {
   const o = order({
-    items: [{ productId: 'p-tra-sua', name: 'Trà sữa trân châu', price: 43000, qty: 2, options: 'L, Thêm trân châu', optionIds: ['g-size-1', 'g-topping-0'] }],
+    items: [{ productId: 'p-tra-sua', name: 'Trà sữa trân châu', price: 43000, qty: 2, options: 'L, Thêm trân châu', optionIds: ['g-size-1', 'g-topping-0', 'removed-option'] }],
     paid: 86000,
   });
   const r = await call('POST', '/orders', o, 'cashier');
   assert.equal(r.status, 201);
-  const round = (n: number) => Math.round(n * 1000) / 1000;
-  // tea: 0.006 x 1.4 x 2 = 0.0168 ; pearls: (0.05 x 1.4 + 0.03) x 2 = 0.2
-  assert.equal(round(tea0 - (await item('i-tra-den')).qty), round(0.0168));
-  assert.equal(round(pearl0 - (await item('i-tran-chau')).qty), 0.2);
-  assert.ok(r.body.costTotal > 0);
-  await call('POST', `/orders/${o.id}/void`, { reason: 'test' }, 'cashier');
-  assert.equal(round((await item('i-tran-chau')).qty), round(pearl0));
+  assert.equal(r.body.items[0].options, 'L, Thêm trân châu');
+  assert.equal(r.body.total, 86000);
   const g = (await call('GET', '/option-groups')).body.optionGroups.find((x: { id: string }) => x.id === 'g-topping');
-  assert.equal(g.options[0].recipe[0].itemId, 'i-tran-chau');
+  assert.equal(g.options[0].priceDelta, 5000);
+  assert.ok(!('recipe' in g.options[0]));
   assert.equal((await call('POST', '/orders', order({ items: [{ productId: 'p-tra-sua', name: 'x', price: 1, qty: 1, optionIds: 'bad' }], paid: 1 }), 'cashier')).status, 400);
 });
 
@@ -424,7 +342,7 @@ test('orders can be filtered by payment method', async () => {
   assert.ok(tr.every((o: { paymentMethod: string }) => o.paymentMethod === 'transfer'));
 });
 
-test('cash in/out changes expected cash; store settings shared; usage per item', async () => {
+test('cash in/out changes expected cash; store settings shared', async () => {
   const s = (await call('POST', '/shifts/open', { deviceId: 'pos-cash', openingCash: 200000 }, 'cashier')).body;
   assert.equal((await call('POST', `/shifts/${s.id}/cash`, { type: 'out', amount: 50000 }, 'cashier')).status, 400);
   await call('POST', `/shifts/${s.id}/cash`, { type: 'out', amount: 50000, reason: 'Trả tiền đá' }, 'cashier');
@@ -437,19 +355,4 @@ test('cash in/out changes expected cash; store settings shared; usage per item',
   assert.equal((await call('PUT', '/store', { bank_bin: '12' })).status, 400);
   await call('PUT', '/store', { bank_bin: '970436', bank_account: '0123456789', bank_holder: 'NGUYEN VAN A', bank_name: 'Vietcombank' });
   assert.equal((await call('GET', '/store', undefined, 'cashier')).body.bank_account, '0123456789');
-  const u = (await call('GET', `/inventory/usage?from=2020-01-01T00:00:00Z&to=2030-01-01T00:00:00Z`)).body.usage;
-  assert.ok(u['i-sua-dac'].sale < 0);
-});
-
-test('direct stock import by a cashier updates quantity, unit cost and history', async () => {
-  const before = await item('i-duong');
-  const r = await call('POST', '/inventory/import', { lines: [{ itemId: 'i-duong', qty: 5, unitCost: 24000 }], supplierId: 's-sua', note: 'Hoá đơn 123' }, 'cashier');
-  assert.equal(r.status, 201);
-  assert.equal(r.body.total, 120000);
-  const after = await item('i-duong');
-  assert.equal(Math.round((after.qty - before.qty) * 1000) / 1000, 5);
-  assert.equal(after.unitCost, 24000);
-  const m = (await call('GET', '/inventory/moves?itemId=i-duong&type=import')).body.moves[0];
-  assert.ok(m.reason.includes('Hoá đơn 123'));
-  assert.equal((await call('POST', '/inventory/import', { lines: [{ itemId: 'i-duong', qty: 0 }] }, 'cashier')).status, 400);
 });

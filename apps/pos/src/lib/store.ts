@@ -118,7 +118,7 @@ export function usePos<T>(selector: (s: PosState) => T): T {
 
 export const cfg = (): ApiConfig => ({ backendUrl: state.settings.backendUrl, token: state.session?.token, apiKey: state.settings.apiKey });
 
-/** Call any API function with the current server + session, e.g. `remote(api.inventory)`. */
+/** Call any API function with the current server + session, e.g. `remote(api.summary, ...)`. */
 export function remote<A extends unknown[], R>(fn: (c: ApiConfig, ...args: A) => Promise<R>, ...args: A): Promise<R> {
   return fn(cfg(), ...args).catch((err) => {
     if (err instanceof ApiError && err.status === 401) set({ connection: 'unauthorized' });
@@ -253,32 +253,25 @@ export function commitSale(sale: NewSale): LocalOrder {
     sync: 'pending',
   };
   persistOrders([order, ...state.orders]);
-  // Optimistic local availability so the grid reflects the sale while offline (server recomputes from BOM).
-  const sold = new Map<string, number>();
-  for (const i of sale.items) if (i.productId) sold.set(i.productId, (sold.get(i.productId) ?? 0) + i.qty);
-  if (sold.size) {
-    const products = state.products.map((p) => (sold.has(p.id) && p.stock !== null ? { ...p, stock: Math.max(0, p.stock - sold.get(p.id)!) } : p));
-    saveCatalog({ products });
-  }
   void syncNow();
   return order;
 }
 
-async function changeOrderStatus(id: string, kind: 'void' | 'refund', reason: string, restock = false) {
+async function changeOrderStatus(id: string, kind: 'void' | 'refund', reason: string) {
   // Orders from other terminals are not in local storage; they are on the server by definition.
   const o = state.orders.find((x) => x.id === id);
   if (o && o.sync !== 'synced') throw new Error('Đơn chưa đồng bộ lên máy chủ, chưa thể huỷ/hoàn tiền');
   if (!reason.trim()) throw new Error('Vui lòng nhập lý do');
   if (kind === 'void') await remote(api.voidOrder, id, reason.trim());
-  else await remote(api.refundOrder, id, { reason: reason.trim(), restock, shiftId: state.shift?.id });
+  else await remote(api.refundOrder, id, { reason: reason.trim(), shiftId: state.shift?.id });
   persistOrders(state.orders.map((x) => (x.id === id ? { ...x, status: kind === 'void' ? 'voided' : 'refunded', statusReason: reason.trim() } : x)));
   void refreshCatalog().catch(() => undefined);
 }
 
-/** Cancel a mistaken order (stock goes back). */
+/** Cancel a mistaken order (never counted as revenue). */
 export const voidOrder = (id: string, reason: string) => changeOrderStatus(id, 'void', reason);
-/** Give the money back. restock=true only if the goods can be resold (e.g. unopened bottle). */
-export const refundOrder = (id: string, reason: string, restock = false) => changeOrderStatus(id, 'refund', reason, restock);
+/** Give the money back (counted against revenue at refund time). */
+export const refundOrder = (id: string, reason: string) => changeOrderStatus(id, 'refund', reason);
 
 /** Put a rejected order back in the queue (e.g. after fixing data on the server). */
 export function retryOrder(id: string) {

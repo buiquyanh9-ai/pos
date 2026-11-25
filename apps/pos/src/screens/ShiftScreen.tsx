@@ -419,7 +419,6 @@ function ShiftReportView({ report, onDone }: { report: ShiftReport; onDone: () =
             </strong>
           </div>
         </div>
-        {report.stocktakes.length === 0 && <p className="muted">Ca này chưa có phiếu kiểm kê kho (••• → Hàng tồn → Kiểm kê cuối ca).</p>}
       </section>
     </div>
   );

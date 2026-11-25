@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
   const { importMenu } = await import('../apps/server/src/menu.ts');
   const { createApp } = await import('../apps/server/src/app.ts');
   const db = openDb(':memory:'); seedIfEmpty(db);
-  importMenu(db, fs.readFileSync('../product/z.product','utf8'), {sampleStock:true});
+  importMenu(db, fs.readFileSync('../product/z.product','utf8'));
   const server = createApp({db}).listen(0,'127.0.0.1');
   await new Promise(r=>server.once('listening',r));
   const root = `http://127.0.0.1:${server.address().port}`;
@@ -33,7 +33,6 @@ const assert = require('node:assert/strict');
     p.on('pageerror',e=>result.errors.push(e.message));
     await p.goto(root+'/pos/'); await p.locator('button.pos-tile').first().waitFor();
     await p.waitForFunction(()=>JSON.parse(localStorage.getItem('shopflow.catalog')||'null')?.products?.length>0);
-    const stockBefore=db.prepare('SELECT qty FROM inventory_items WHERE id=?').get('i-suon').qty;
     await context.setOffline(true);
     await p.locator('button.pos-tile').first().click();
     await p.getByRole('button',{name:'THANH TOÁN',exact:true}).click();
@@ -49,23 +48,20 @@ const assert = require('node:assert/strict');
     await p.evaluate(()=>window.dispatchEvent(new Event('online')));
     await p.waitForFunction(()=>JSON.parse(localStorage.getItem('shopflow.orders')||'[]')[0]?.sync==='synced');
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n,1);
-    assert.equal(db.prepare('SELECT qty FROM inventory_items WHERE id=?').get('i-suon').qty,stockBefore-1);
-    // Repeated reconnects must not duplicate the order or deduct stock again.
+    // Repeated reconnects must not duplicate the order.
     await p.evaluate(()=>{window.dispatchEvent(new Event('online'));window.dispatchEvent(new Event('online'));});
     await p.waitForTimeout(750);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n,1);
-    assert.equal(db.prepare('SELECT qty FROM inventory_items WHERE id=?').get('i-suon').qty,stockBefore-1);
-    result.steps.push({name:'reconnect-idempotent',ok:true,serverOrders:1,stockDeducted:1});
+    result.steps.push({name:'reconnect-idempotent',ok:true,serverOrders:1});
     await p.screenshot({path:path.join(output,'reconnected.png')});
     const order=db.prepare('SELECT * FROM orders').get();
-    await api(`/orders/${order.id}/refund`,{reason:'AUDIT refund',restock:true,shiftId:shift.id});
-    assert.equal(db.prepare('SELECT qty FROM inventory_items WHERE id=?').get('i-suon').qty,stockBefore);
+    await api(`/orders/${order.id}/refund`,{reason:'AUDIT refund',shiftId:shift.id});
     const report=await api(`/shifts/${shift.id}/report`);
     assert.equal(report.shift.expectedCash,500000);
     const closed=await api(`/shifts/${shift.id}/close`,{countedCash:500000,note:'AUDIT isolated close'});
     assert.equal(closed.shift.cashDifference,0);
     assert.equal(closed.shift.status,'closed');
-    result.steps.push({name:'refund-restock-close-shift-api',ok:true,expectedCash:500000,cashDifference:0});
+    result.steps.push({name:'refund-close-shift-api',ok:true,expectedCash:500000,cashDifference:0});
     await context.close();
   } catch(e) {result.steps.push({name:'failure',ok:false,error:e.stack});process.exitCode=1;}
   finally {fs.writeFileSync(path.join(output,'results.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));await browser.close();await new Promise(r=>server.close(r));db.close();}

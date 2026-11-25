@@ -11,14 +11,6 @@ export function moneyShort(n: number) {
 }
 export const qty = (n: number) => vnd.format(Math.round(n * 1000) / 1000);
 
-/** Stock text: exact items show the count, estimate items "còn khoảng X" (rounded sensibly). */
-export function stockText(item: { qty: number; unit: string; tracking?: 'exact' | 'estimate' }) {
-  if (item.tracking !== 'estimate') return `${qty(item.qty)} ${item.unit}`;
-  const q = item.qty;
-  const rounded = Math.abs(q) >= 100 ? Math.round(q / 10) * 10 : Math.abs(q) >= 10 ? Math.round(q) : Math.round(q * 2) / 2;
-  return `còn khoảng ${qty(rounded)} ${item.unit}`;
-}
-
 /** Product photo URL. The server stores "/media/products/<group>/<name>", relative to the backend. */
 export function imageSrc(imageUrl: string | null | undefined, backendUrl: string) {
   if (!imageUrl) return null;

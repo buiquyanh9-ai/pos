@@ -5,7 +5,7 @@ const fs=require('node:fs'),path=require('node:path');
  const {seedIfEmpty,seedDemoSales}=await import('../apps/server/src/seed.ts');
  const {createApp}=await import('../apps/server/src/app.ts');
  const {importMenu}=await import('../apps/server/src/menu.ts');
- const db=openDb(':memory:');seedIfEmpty(db);importMenu(db,fs.readFileSync('../product/z.product','utf8'),{sampleStock:true});seedDemoSales(db);setSetting(db,'store_name','Cửa hàng mẫu ShopFlow');
+ const db=openDb(':memory:');seedIfEmpty(db);importMenu(db,fs.readFileSync('../product/z.product','utf8'));seedDemoSales(db);setSetting(db,'store_name','Cửa hàng mẫu ShopFlow');
  const server=createApp({db}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const root=`http://127.0.0.1:${server.address().port}`;
  const login=async username=>{const r=await fetch(root+'/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username,password:username==='chu'?'chu123456':'thungan123'})});if(!r.ok)throw Error(await r.text());return r.json()};
  const owner=await login('chu'),cashier=await login('thungan');

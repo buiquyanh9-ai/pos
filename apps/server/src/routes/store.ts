@@ -6,7 +6,7 @@ import { publish } from '../events.ts';
 import { HttpError, MAX_MONEY, bad, isoDate, reqInt, reqStr, str } from '../validate.ts';
 
 // Store-wide settings shared by every terminal (receipt header, bank account for transfers),
-// cash in/out during a shift, and stock usage per day.
+// and cash in/out during a shift.
 
 export const STORE_KEYS = ['store_name', 'store_address', 'store_phone', 'receipt_footer', 'bank_bin', 'bank_name', 'bank_account', 'bank_holder'] as const;
 type StoreKey = (typeof STORE_KEYS)[number];
@@ -74,18 +74,6 @@ export function storeRoutes(db: DB) {
     });
     setImmediate(() => publish('shift.updated', { id: shiftId }));
     res.status(201).json(moveDto(db.prepare('SELECT c.*, u.name AS user_name FROM cash_moves c LEFT JOIN users u ON u.id = c.user_id WHERE c.id = ?').get(id)!));
-  });
-
-  // ---------------------------------------------------------------- stock usage per item over a period
-  r.get('/inventory/usage', (req, res) => {
-    const from = isoDate(req.query.from, 'from')!;
-    const to = isoDate(req.query.to, 'to')!;
-    const rows = db
-      .prepare('SELECT item_id, type, SUM(qty_delta) AS q FROM stock_moves WHERE at >= ? AND at < ? GROUP BY item_id, type')
-      .all(from, to);
-    const out: Record<string, Record<string, number>> = {};
-    for (const r2 of rows) (out[r2.item_id as string] ??= {})[r2.type as string] = Math.round(Number(r2.q) * 1000) / 1000;
-    res.json({ from, to, usage: out });
   });
 
   return r;

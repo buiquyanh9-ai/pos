@@ -1,18 +1,18 @@
 # ShopFlow
 
-ShopFlow is a sales and inventory system for food & beverage shops. It has two independent apps that share one backend and one database:
+ShopFlow is a sales and revenue-monitoring system for food & beverage shops. It has two independent apps that share one backend and one database:
 
 | App | Who uses it | Where it runs |
 |---|---|---|
-| **ShopFlow POS** (`apps/pos`) | Cashiers and stock staff | Browser on Windows; APK for Android POS terminals (Capacitor) |
+| **ShopFlow POS** (`apps/pos`) | Cashiers | Browser on Windows; APK for Android POS terminals (Capacitor) |
 | **ShopFlow Boss** (`apps/boss`) | The shop owner | Phone (Android/iOS via Capacitor, or installable web app) |
 | **Backend** (`apps/server`) | Both apps | Any PC or server with Node.js 24 |
 
 ```
-apps/server     Node 24 + Express + SQLite (node:sqlite) · auth & roles · orders · inventory (BOM) · shifts
-                · stocktakes · purchasing · reports · notifications · realtime (SSE)
+apps/server     Node 24 + Express + SQLite (node:sqlite) · auth & roles · orders · shifts & cash drawer
+                · reports · notifications · realtime (SSE)
 apps/pos        React + Vite + TS · touch POS · offline-first order queue · hardware drivers (printer, scanner, drawer)
-apps/boss       React + Vite + TS · owner dashboard · reports by exact time range · live activity · stock & approvals
+apps/boss       React + Vite + TS · owner dashboard · reports by exact time range · live activity · notifications
 packages/shared Types and formatting shared by POS and Boss
 docs/           SYNC.md (API & business rules) · ANDROID.md (APK) · DEPLOY.md (production) · SUNMI.md · PLAN.md
 ```
@@ -44,7 +44,7 @@ npm run dev                         # backend :4000, POS :5173, Boss :5174
 
 - POS: http://localhost:5173. Log in by choosing a staff member and entering their PIN.
 - Boss: http://localhost:5174. Log in with the owner's username and password. It is laid out for a phone screen; use the browser's device toolbar on a PC.
-- On first start the backend creates **sample data**: the store "Cửa hàng mẫu", a café menu with recipes, inventory, tables and suppliers. Every sample record is marked "mẫu" (sample).
+- On first start the backend creates **sample data**: the store "Cửa hàng mẫu", demo accounts and tables (the menu comes from `product/z.product`). Every sample record is marked "mẫu" (sample).
 
 ### POS on the PC, Boss on your phone (same Wi-Fi)
 
@@ -55,7 +55,7 @@ npm run serve        # builds POS + Boss, then serves everything on port 4000
 - On the PC, open the POS at `http://localhost:4000/pos/`.
 - On the phone, use the same Wi-Fi and open `http://<PC IP>:4000/boss/` (e.g. `http://192.168.2.211:4000/boss/`). The server prints the PC's LAN IP when it starts. The browser's *Add to Home screen* turns it into an app icon.
 - **iPhone:** open the address in **Safari**, tap *Share* → *Add to Home Screen*. ShopFlow Boss then gets its own icon and opens full screen like an app, without the App Store. A banner in the app explains this.
-- Every sale, refund, shift close, stock alert and open bill reaches the phone within about a second (SSE). Purchase approvals made on the phone reach the POS.
+- Every sale, refund, shift close and open bill reaches the phone within about a second (SSE).
 - If the phone cannot connect, allow port 4000 in Windows Firewall. In PowerShell **as Administrator**:
   `New-NetFirewallRule -DisplayName "ShopFlow 4000" -Direction Inbound -Protocol TCP -LocalPort 4000 -Action Allow -Profile Private`.
   Also check that the Wi-Fi network is set to *Private*.
@@ -66,10 +66,6 @@ The shop's menu is maintained in `c:\VISUAL\pos\product\z.product`, a Markdown f
 - The backend imports it at startup and again every time the file is saved. Products, prices, categories, the 5-slots-per-row layout and tables 001-024 all come from it.
 - Photos go in `product/product_img/<label>/<name>.jpg|png|webp`. Labels: `com-trang` (white rice), `com-dao` (fried rice), `mon-them` (extra portions), `do-an-kem` (side dishes), `do-uong` (drinks). Example: `com-trang/com-trang-suon.jpg`. The server supplies `/media/products/<label>/<name>`; old flat URLs still work. Takeaway items reuse the dine-in photo. Six side-dish images are available for future menu entries; adding images does not add products or prices.
 - Check the result without changing anything: `npm run import-menu -w apps/server`. It prints the grid and any warnings.
-
-Stock rules applied from the file:
-- **Exact stock:** sườn, xá xíu, gà, bò, cá kho, bottled drinks. One unit per portion sold, shared by dine-in and takeaway.
-- **Estimate stock:** rice, vegetables, tea, takeaway boxes, shown as "còn khoảng X". Rice, vegetables and tea are issued to the kitchen at the start of the shift and counted at the end (*Kho → Bếp*). Each takeaway rice portion or extra meat/fish uses 1 box. Damaged boxes are recorded with *Ghi hao hụt*.
 
 ### Owner on any network (4G, other Wi-Fi)
 
@@ -94,7 +90,7 @@ npm run tunnel         # terminal 2: public https link (Cloudflare Quick Tunnel,
 For a real shop:
 1. Start the backend once with `SEED=0` and an empty database.
 2. Create the owner with `npm run create-owner -w apps/server -- <username> <password> [PIN]`.
-3. Add staff, menu and stock from the apps or the API.
+3. Add staff and menu from the apps or the API.
 
 ### Commands
 
@@ -127,28 +123,24 @@ For a real shop:
    - An order is saved on the device first, then uploaded.
    - Each order has an id generated on the device, so a retry never creates a duplicate.
    - Selling continues while offline; the header shows how many orders are waiting to upload.
-2. **Backend.** In one transaction, the backend stores the order and deducts every ingredient according to the recipe (BOM), writing a stock ledger entry for each.
-   - Concurrent or repeated uploads of the same order deduct stock once.
+2. **Backend.** In one transaction, the backend stores the order and its lines.
+   - Concurrent or repeated uploads of the same order are stored once.
    - Totals are recomputed on the server.
 3. **Boss sees it live.** The backend pushes events over SSE (`/api/events`), so the dashboard, activity feed and reports refresh within about a second.
-4. **Alerts.** When an item drops below its minimum, a `stock.low` notification is created. It appears in Boss immediately, and on the phone as a push notification when FCM is configured.
-5. **End of shift.**
-   - Staff count stock. A difference requires a reason; it adjusts stock and notifies the owner.
-   - The cashier counts the cash. The shift report shows expected vs counted cash.
-6. **Purchasing.** The stock clerk creates a purchase request from the "below minimum" suggestions, and the owner approves or rejects it in Boss.
-7. **Receiving.** The stock clerk enters the quantities actually received. Stock and unit costs update, and both apps see the new levels.
+4. **Alerts.** Voids, refunds and shift summaries create notifications. They appear in Boss immediately, and on the phone as a push notification when FCM is configured.
+5. **End of shift.** The cashier counts the cash by denomination. The shift report shows expected vs counted cash, and the owner is notified.
 
 **Also in the POS:**
 - **Open bills.** Save a table's order unpaid, edit it from any terminal, move it to another table, then pay or cancel it (a reason is required). Busy tables are highlighted. The owner sees these bills in Boss under *Hoạt động → Hoá đơn hiện tại*.
-- **Options.** Size, ice, sugar and toppings, each with a surcharge. A size can scale the recipe (L = 1.4×) and a topping can use its own stock, so stock levels and cost of goods stay correct.
-- **Owner back-office (*Quản lý*).** Menu and prices, categories, options, recipes (BOM) with live cost, ingredients/goods, suppliers, tables, staff (roles, PIN, password, lock).
-- **Void / refund.** Both need a reason. A refund can put the goods back in stock. Everything is in the audit log, which the owner can read in Boss under *Thêm → Lịch sử thao tác*.
+- **Options.** Size, ice, sugar and toppings, each with a surcharge.
+- **Owner back-office (*Quản lý*).** Menu and prices, categories, options, tables, staff (roles, PIN, password, lock).
+- **Void / refund.** Both need a reason. Everything is in the audit log, which the owner can read in Boss under *Thêm → Lịch sử thao tác*.
 
 Revenue rules (net, refunds, voids, profit) are in [docs/SYNC.md](docs/SYNC.md).
 
 **Roles (two):**
-- **Owner:** everything. Usually works remotely from the Boss app on the phone (reports, approvals, staff, menu); still has a POS account.
-- **Cashier:** works at the POS. Selling, void/refund with a reason, shifts and cash, and all stock work: counts, kitchen open/close, waste, direct goods receipt (*nhập kho*), purchase requests. The former stock-staff role was merged into cashier.
+- **Owner:** everything. Usually works remotely from the Boss app on the phone (reports, staff, menu); still has a POS account.
+- **Cashier:** works at the POS. Selling, void/refund with a reason, shifts and the cash drawer. The former stock-staff role was merged into cashier.
 
 ## Android
 

@@ -29,7 +29,7 @@ export function Notifications({ onBack }: { onBack?: () => void }) {
           {data?.notifications.map((n) => (
             <li key={n.id} className={n.read ? 'notif' : 'notif unread'}>
               <span className={`notif-icon t-${n.type.replace('.', '-')}`} aria-hidden="true">
-                {n.type.startsWith('stock') ? '📦' : n.type.startsWith('purchase') ? '🧾' : n.type.startsWith('order') ? '↩' : '📊'}
+                {n.type.startsWith('order') ? '↩' : '📊'}
               </span>
               <span className="grow">
                 <strong>{n.title}</strong>
@@ -165,7 +165,7 @@ export function More({ openNotifications }: { openNotifications: () => void }) {
           <span className="chev">›</span>
         </button>
         <button className="menu-row" onClick={() => setShowAudit(true)}>
-          <span>🕘 Lịch sử thao tác (huỷ đơn, hoàn tiền, điều chỉnh kho…)</span>
+          <span>🕘 Lịch sử thao tác (huỷ đơn, hoàn tiền, thực đơn…)</span>
           <span className="chev">›</span>
         </button>
         <Card title="Ca làm việc 7 ngày qua">

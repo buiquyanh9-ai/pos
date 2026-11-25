@@ -3,13 +3,18 @@ import { randomUUID } from 'node:crypto';
 import { type DB, type Row, audit, logChange, now, tx } from '../db.ts';
 import { actorId, allow } from '../auth.ts';
 import { publish } from '../events.ts';
-import { applyOrderStock, productUnitCost } from '../inventory.ts';
 import { createNotification } from '../notifications.ts';
 import { expectedCash, rowToShift, summarize } from '../reports.ts';
 import { HttpError, MAX_MONEY, bad, int, isoDate, reqInt, reqStr, str } from '../validate.ts';
 
 export const PAYMENT_METHODS = ['cash', 'card', 'transfer'] as const;
 export const ORDER_TYPES = ['dine_in', 'takeaway', 'delivery'] as const;
+
+/** Manual unit cost entered for a product (no inventory/recipes): null when unknown. */
+function productUnitCost(db: DB, productId: string): number | null {
+  const c = db.prepare('SELECT cost FROM products WHERE id = ?').get(productId)?.cost;
+  return c === null || c === undefined ? null : Number(c);
+}
 
 const fmt = (n: number) => `${new Intl.NumberFormat('vi-VN').format(n)}đ`;
 
@@ -77,14 +82,14 @@ export function salesRoutes(db: DB) {
       const qty = reqInt(it.qty, `items[${i}].qty`, { min: 1, max: 100_000 });
       let productId = str(it.productId, `items[${i}].productId`, { optional: true, max: 64 }) ?? null;
       const info = productId ? productInfo.get(productId) : undefined;
-      if (productId && !info) productId = null; // product deleted meanwhile: keep the sale, skip stock
+      if (productId && !info) productId = null; // product deleted meanwhile: keep the sale
       const rawIds = it.optionIds;
       if (rawIds !== undefined && (!Array.isArray(rawIds) || rawIds.length > 20 || rawIds.some((x) => typeof x !== 'string'))) {
         throw bad(`items[${i}].optionIds must be an array of ids`);
       }
-      // Unknown option ids (deleted meanwhile) are ignored for stock but the sale is kept.
+      // Unknown option ids (deleted meanwhile) are dropped; the sale is kept.
       const optionIds = ((rawIds as string[] | undefined) ?? []).filter((x) => db.prepare('SELECT 1 FROM options WHERE id = ?').get(x));
-      const unitCost = productId ? productUnitCost(db, productId, optionIds) : null;
+      const unitCost = productId ? productUnitCost(db, productId) : null;
       return {
         productId,
         name: reqStr(it.name, `items[${i}].name`),
@@ -125,7 +130,7 @@ export function salesRoutes(db: DB) {
     const costTotal = items.every((it) => it.unitCost !== null) ? items.reduce((s, it) => s + it.unitCost! * it.qty, 0) : null;
 
     const created = tx(db, () => {
-      // Re-check inside the write lock: two concurrent uploads of the same order must not both deduct stock.
+      // Re-check inside the write lock: two concurrent uploads of the same order must not both be stored.
       if (getOrderRow(id)) return false;
       db.prepare(
         `INSERT INTO orders (id, number, device_id, shift_id, cashier_id, cashier, order_type, table_name, note, subtotal, discount, total,
@@ -141,7 +146,6 @@ export function salesRoutes(db: DB) {
         'INSERT INTO order_items (order_id, product_id, name, category, price, qty, line_total, note, options, option_ids, unit_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       );
       for (const it of items) ins.run(id, it.productId, it.name, it.category, it.price, it.qty, it.lineTotal, it.note, it.options, it.optionIds.join(','), it.unitCost);
-      applyOrderStock(db, id, items, -1, { type: 'sale', userId: cashierId });
       logChange(db, 'order', id, 'upsert');
       return true;
     });
@@ -188,7 +192,6 @@ export function salesRoutes(db: DB) {
   function changeStatus(req: import('express').Request, kind: 'void' | 'refund') {
     const id = req.params.id as string;
     const reason = reqStr(req.body?.reason, 'reason', 200);
-    const restock = kind === 'void' ? true : req.body?.restock === true;
     const shiftId = str(req.body?.shiftId, 'shiftId', { optional: true, max: 64 }) ?? null;
     const userId = actorId(req);
     const result = tx(db, () => {
@@ -199,22 +202,8 @@ export function salesRoutes(db: DB) {
       db.prepare(
         'UPDATE orders SET status = ?, status_reason = ?, status_at = ?, status_by = ?, refund_amount = ?, refund_shift_id = ? WHERE id = ?',
       ).run(status, reason, now(), userId, kind === 'refund' ? Number(row.total) : 0, kind === 'refund' ? shiftId : null, id);
-      if (restock) {
-        const lines = db.prepare('SELECT product_id, qty, option_ids FROM order_items WHERE order_id = ?').all(id);
-        applyOrderStock(
-          db,
-          id,
-          lines.map((l) => ({
-            productId: (l.product_id as string | null) ?? null,
-            qty: Number(l.qty),
-            optionIds: ((l.option_ids as string) || '').split(',').filter(Boolean),
-          })),
-          1,
-          { type: kind, userId, reason },
-        );
-      }
       logChange(db, 'order', id, 'upsert');
-      audit(db, userId, `order.${kind}`, 'order', id, { reason, restock });
+      audit(db, userId, `order.${kind}`, 'order', id, { reason });
       createNotification(db, {
         type: kind === 'void' ? 'order.voided' : 'order.refunded',
         title: `${kind === 'void' ? 'Huỷ đơn' : 'Hoàn tiền'} ${row.number}: ${fmt(Number(row.total))}`,
@@ -282,11 +271,9 @@ export function salesRoutes(db: DB) {
     const s = getShift(id);
     const shift = rowToShift(s);
     const summary = summarize(db, { from: shift.openedAt, to: shift.closedAt ?? new Date(Date.now() + 1000).toISOString(), shiftId: id });
-    const stocktakes = db.prepare('SELECT id, created_at FROM stocktakes WHERE shift_id = ? ORDER BY created_at').all(id);
     return {
       shift: { ...shift, expectedCash: shift.expectedCash ?? expectedCash(db, id) },
       summary,
-      stocktakes: stocktakes.map((t) => ({ id: t.id as string, createdAt: t.created_at as string })),
     };
   }
 

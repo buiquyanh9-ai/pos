@@ -71,11 +71,9 @@ export function miscRoutes(db: DB) {
       change: { netRevenue: pct(today.netRevenue, yest.netRevenue), orderCount: pct(today.orderCount, yest.orderCount), itemsSold: pct(today.itemsSold, yest.itemsSold) },
       asOf: nowIso,
     };
-    const low = db.prepare('SELECT COUNT(*) AS n FROM inventory_items WHERE active = 1 AND qty < min_qty').get()!;
-    const pending = db.prepare("SELECT COUNT(*) AS n FROM purchase_requests WHERE status = 'pending'").get()!;
     const openShifts = db.prepare("SELECT COUNT(*) AS n FROM shifts WHERE status = 'open'").get()!;
     const openOrders = db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(total),0) AS total FROM open_orders').get()!;
-    res.json({ today: todayWithCompare, lowStockCount: Number(low.n), pendingPurchases: Number(pending.n), openShifts: Number(openShifts.n), openOrders: { count: Number(openOrders.n), total: Number(openOrders.total) }, serverTime: now() });
+    res.json({ today: todayWithCompare, openShifts: Number(openShifts.n), openOrders: { count: Number(openOrders.n), total: Number(openOrders.total) }, serverTime: now() });
   });
 
   // ---------------------------------------------------------------- notifications

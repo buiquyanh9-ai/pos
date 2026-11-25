@@ -3,19 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { type DB, type Row, audit, logChange, now, tx } from '../db.ts';
 import { actorId, allow } from '../auth.ts';
 import { publish } from '../events.ts';
-import { availability, productUnitCost } from '../inventory.ts';
 import { HttpError, MAX_MONEY, bad, int, isoDate, reqInt, reqStr, str } from '../validate.ts';
-
-function num(v: unknown, field: string, opts: { min?: number; optional?: boolean } = {}): number | undefined {
-  if (v === undefined || v === null) {
-    if (opts.optional) return undefined;
-    throw bad(`${field} is required`);
-  }
-  if (typeof v !== 'number' || !Number.isFinite(v)) throw bad(`${field} must be a number`);
-  if (opts.min !== undefined && v < opts.min) throw bad(`${field} must be >= ${opts.min}`);
-  return v;
-}
-export { num };
 
 export function catalogRoutes(db: DB) {
   const r = Router();
@@ -25,11 +13,6 @@ export function catalogRoutes(db: DB) {
   function optionGroupsByProduct() {
     const groups = db.prepare('SELECT * FROM option_groups').all();
     const opts = db.prepare('SELECT * FROM options ORDER BY sort, name').all();
-    const optRecipes = new Map<string, { itemId: string; qty: number }[]>();
-    for (const r of db.prepare('SELECT * FROM option_recipes').all()) {
-      const k = r.option_id as string;
-      optRecipes.set(k, [...(optRecipes.get(k) ?? []), { itemId: r.item_id as string, qty: Number(r.qty) }]);
-    }
     const byGroup = new Map<string, Row[]>();
     for (const o of opts) byGroup.set(o.group_id as string, [...(byGroup.get(o.group_id as string) ?? []), o]);
     const groupDto = new Map(
@@ -44,8 +27,6 @@ export function catalogRoutes(db: DB) {
             id: o.id as string,
             name: o.name as string,
             priceDelta: Number(o.price_delta),
-            recipeFactor: Number(o.recipe_factor ?? 1),
-            recipe: optRecipes.get(o.id as string) ?? [],
           })),
         },
       ]),
@@ -59,22 +40,8 @@ export function catalogRoutes(db: DB) {
     return { out, all: [...groupDto.values()] };
   }
 
-  function recipesByProduct() {
-    const rows = db
-      .prepare('SELECT r.*, i.name AS item_name, i.unit FROM recipes r JOIN inventory_items i ON i.id = r.item_id ORDER BY i.name')
-      .all();
-    const out = new Map<string, { itemId: string; itemName: string; unit: string; qty: number }[]>();
-    for (const x of rows) {
-      const pid = x.product_id as string;
-      out.set(pid, [...(out.get(pid) ?? []), { itemId: x.item_id as string, itemName: x.item_name as string, unit: x.unit as string, qty: Number(x.qty) }]);
-    }
-    return out;
-  }
-
   function productsDto(rows: Row[]) {
-    const avail = availability(db);
     const { out: groups } = optionGroupsByProduct();
-    const recipes = recipesByProduct();
     return rows.map((p) => {
       const id = p.id as string;
       return {
@@ -86,16 +53,14 @@ export function catalogRoutes(db: DB) {
         category: (p.category_name as string | null) ?? (p.category as string) ?? '',
         imageUrl: (p.image_url as string | null) ?? null,
         price: Number(p.price),
-        cost: productUnitCost(db, id),
-        /** Portions that can still be made from stock; null = stock not tracked for this product. */
-        stock: avail.has(id) ? avail.get(id)! : null,
+        /** Manual unit cost (optional); null when not entered. */
+        cost: p.cost === null || p.cost === undefined ? null : Number(p.cost),
         active: Number(p.active) === 1,
         sort: Number(p.sort ?? 0),
         /** Position in the menu grid of its category (5 columns per row). null = auto. */
         gridRow: p.grid_row === null || p.grid_row === undefined ? null : Number(p.grid_row),
         gridCol: p.grid_col === null || p.grid_col === undefined ? null : Number(p.grid_col),
         optionGroups: groups.get(id) ?? [],
-        recipe: recipes.get(id) ?? [],
         updatedAt: p.updated_at as string,
       };
     });
@@ -179,20 +144,6 @@ export function catalogRoutes(db: DB) {
     return { id, name: s };
   }
 
-  function writeRecipe(productId: string, recipe: unknown) {
-    if (recipe === undefined) return;
-    if (!Array.isArray(recipe)) throw bad('recipe must be an array');
-    db.prepare('DELETE FROM recipes WHERE product_id = ?').run(productId);
-    const ins = db.prepare('INSERT INTO recipes (product_id, item_id, qty) VALUES (?, ?, ?)');
-    for (const [i, raw] of recipe.entries()) {
-      const line = (raw ?? {}) as Row;
-      const itemId = reqStr(line.itemId, `recipe[${i}].itemId`, 64);
-      if (!db.prepare('SELECT 1 FROM inventory_items WHERE id = ?').get(itemId)) throw bad(`recipe[${i}].itemId not found`);
-      const qty = num(line.qty, `recipe[${i}].qty`, { min: 0.0001 })!;
-      ins.run(productId, itemId, qty);
-    }
-  }
-
   function writeOptionGroups(productId: string, ids: unknown) {
     if (ids === undefined) return;
     if (!Array.isArray(ids)) throw bad('optionGroupIds must be an array');
@@ -231,7 +182,6 @@ export function catalogRoutes(db: DB) {
         b.active === false ? 0 : 1,
         now(),
       );
-      writeRecipe(id, b.recipe);
       writeOptionGroups(id, b.optionGroupIds);
       logChange(db, 'product', id, 'upsert');
       audit(db, actorId(req), 'product.create', 'product', id, { name, price });
@@ -269,7 +219,6 @@ export function catalogRoutes(db: DB) {
       if (cat) (set('category_id', cat.id), set('category', cat.name));
       set('updated_at', now());
       db.prepare(`UPDATE products SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
-      writeRecipe(id, b.recipe);
       writeOptionGroups(id, b.optionGroupIds);
       logChange(db, 'product', id, 'upsert');
       audit(db, actorId(req), 'product.update', 'product', id, { ...b, priceBefore: Number(before.price) });
@@ -314,26 +263,15 @@ export function catalogRoutes(db: DB) {
       // Keep option ids stable (order lines reference them); delete only the ones removed.
       const keep: string[] = [];
       const up = db.prepare(
-        `INSERT INTO options (id, group_id, name, price_delta, recipe_factor, sort) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, price_delta = excluded.price_delta, recipe_factor = excluded.recipe_factor, sort = excluded.sort`,
+        `INSERT INTO options (id, group_id, name, price_delta, sort) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, price_delta = excluded.price_delta, sort = excluded.sort`,
       );
       (b.options as unknown[]).forEach((raw: unknown, i: number) => {
         const o = (raw ?? {}) as Row;
         const oid = str(o.id, `options[${i}].id`, { optional: true, max: 64 }) ?? randomUUID();
-        const factor = num(o.recipeFactor, `options[${i}].recipeFactor`, { optional: true, min: 0 }) ?? 1;
         const delta = int(o.priceDelta, `options[${i}].priceDelta`, { optional: true, min: -MAX_MONEY, max: MAX_MONEY }) ?? 0;
-        up.run(oid, id, reqStr(o.name, `options[${i}].name`, 64), delta, factor, i);
+        up.run(oid, id, reqStr(o.name, `options[${i}].name`, 64), delta, i);
         keep.push(oid);
-        if (o.recipe !== undefined) {
-          if (!Array.isArray(o.recipe)) throw bad(`options[${i}].recipe must be an array`);
-          db.prepare('DELETE FROM option_recipes WHERE option_id = ?').run(oid);
-          (o.recipe as unknown[]).forEach((rr, j) => {
-            const r = (rr ?? {}) as Row;
-            const itemId = reqStr(r.itemId, `options[${i}].recipe[${j}].itemId`, 64);
-            if (!db.prepare('SELECT 1 FROM inventory_items WHERE id = ?').get(itemId)) throw bad(`options[${i}].recipe[${j}].itemId not found`);
-            db.prepare('INSERT INTO option_recipes (option_id, item_id, qty) VALUES (?, ?, ?)').run(oid, itemId, num(r.qty, `options[${i}].recipe[${j}].qty`, { min: 0.0001 })!);
-          });
-        }
       });
       db.prepare(`DELETE FROM options WHERE group_id = ? AND id NOT IN (${keep.map(() => '?').join(',')})`).run(id, ...keep);
     }

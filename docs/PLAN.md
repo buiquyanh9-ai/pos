@@ -2,6 +2,8 @@
 
 Nguồn yêu cầu: `c:\VISUAL\pos\CLAUDE.md`. Tham khảo giao diện: `c:\VISUAL\pos\Giaodien\*.png`. Chỉ học bố cục và luồng thao tác, không dùng logo, tên hay ảnh.
 
+> **Cập nhật 25/11/2026:** theo yêu cầu của chủ cửa hàng, module kho (tồn kho, công thức/BOM, kiểm kê, bếp, nhà cung cấp, nhập hàng) đã được gỡ khỏi máy chủ, POS và Boss. Các mục kho bên dưới chỉ còn là lịch sử kế hoạch.
+
 ## Quyết định kiến trúc
 
 | Thành phần | Chọn | Lý do |

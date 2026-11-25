@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import type { Role } from './auth.ts';
 
 // Server-Sent Events hub: POS and Boss subscribe to GET /api/events and receive
-// { type, data } messages (order.created, stock.changed, notification, ...).
+// { type, data } messages (order.created, shift.updated, notification, ...).
 
 interface Client {
   res: Response;
@@ -14,9 +14,7 @@ const clients = new Set<Client>();
 export type EventType =
   | 'order.created'
   | 'order.updated'
-  | 'stock.changed'
   | 'shift.updated'
-  | 'purchase.updated'
   | 'catalog.changed'
   | 'open_orders.changed'
   | 'notification';

@@ -59,11 +59,11 @@ The server-side sender is implemented (FCM HTTP v1 with a signed JWT), but it ha
 - Owner password: at least 10 characters.
 - Use HTTPS when the backend is reachable from the Internet.
 - Login is locked for 5 minutes after 5 wrong PINs or passwords.
-- Every void, refund, cancelled bill, stock adjustment and purchase decision is in the audit log (`GET /api/audit`).
+- Every void, refund, cancelled bill and cash in/out is in the audit log (`GET /api/audit`).
 
 ## Moving to PostgreSQL later
 
-All SQL lives in `apps/server/src/db.ts` (schema), `inventory.ts`, `reports.ts` and `routes/*.ts`. Moving to PostgreSQL means:
+All SQL lives in `apps/server/src/db.ts` (schema), `reports.ts` and `routes/*.ts`. Moving to PostgreSQL means:
 - Port the schema: `INTEGER PRIMARY KEY AUTOINCREMENT` → `bigserial`, `REAL` → `numeric(14,3)`.
 - Replace `node:sqlite` with `pg`.
 - Keep the same transaction boundaries. `BEGIN IMMEDIATE` becomes `SELECT … FOR UPDATE` on the order id.

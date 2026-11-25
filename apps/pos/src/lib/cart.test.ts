@@ -4,7 +4,7 @@ import { fold } from './format';
 import type { Product } from './types';
 
 const p = (id: string, price: number): Product => ({
-  id, sku: id, barcode: null, name: id, categoryId: null, category: '', imageUrl: null, price, cost: null, stock: 10, active: true, optionGroups: [], updatedAt: '',
+  id, sku: id, barcode: null, name: id, categoryId: null, category: '', imageUrl: null, price, cost: null, active: true, optionGroups: [], updatedAt: '',
 });
 
 describe('cart', () => {

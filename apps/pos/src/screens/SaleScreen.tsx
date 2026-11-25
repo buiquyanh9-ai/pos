@@ -15,7 +15,7 @@ interface Props {
   dispatch: Dispatch<CartAction>;
   query: string;
   setQuery: (value: string) => void;
-  /** Opens the "•••" launcher (Hoạt động, Báo cáo, Hàng tồn, ...). */
+  /** Opens the "•••" launcher (Hoạt động, Báo cáo, Két tiền, ...). */
   onMore: () => void;
 }
 
@@ -56,9 +56,8 @@ function layout(products: Product[]): (Product | null)[][] {
 function ProductTile({ p, qty, onTap }: { p: Product; qty: number; onTap: () => void }) {
   const [broken, setBroken] = useState(false);
   const src = imageSrc(p.imageUrl);
-  const out = p.stock !== null && p.stock <= 0;
   return (
-    <button className={`pos-tile${qty ? ' in-bill' : ''}${out ? ' out' : ''}`} onClick={onTap} title={p.name}>
+    <button className={`pos-tile${qty ? ' in-bill' : ''}`} onClick={onTap} title={p.name}>
       <span className="pos-photo">
         {src && !broken ? (
           <img src={src} alt="" loading="lazy" onError={() => setBroken(true)} />
@@ -66,8 +65,6 @@ function ProductTile({ p, qty, onTap }: { p: Product; qty: number; onTap: () => 
           <span className="pos-letter">{p.name.replace(/^(Cơm (trắng|đảo)|Nước)\s+/i, '').slice(0, 1).toUpperCase()}</span>
         )}
         {qty > 0 && <span className="pos-qty">{qty}</span>}
-        {out && <span className="pos-out">Hết</span>}
-        {p.stock !== null && p.stock > 0 && p.stock <= 5 && <span className="pos-low">Còn {p.stock}</span>}
       </span>
       <span className="pos-name">{p.name}</span>
       <span className="pos-price">{money(p.price)}</span>
@@ -111,7 +108,6 @@ export function SaleScreen({ cart, dispatch, query, setQuery, onMore }: Props) {
   const t = totalsOf(cart);
   const add = (p: Product) => {
     if (p.optionGroups.length) return setPicking(p);
-    if (p.stock !== null && p.stock <= 0) notify(`${p.name}: kho đã hết theo sổ sách`, 'error');
     dispatch({ type: 'add', product: p });
   };
 
@@ -158,7 +154,7 @@ export function SaleScreen({ cart, dispatch, query, setQuery, onMore }: Props) {
           {!products.length && <p className="empty pos-empty">Chưa có món. Kiểm tra kết nối máy chủ.</p>}
         </div>
         <nav className="pos-cats" role="tablist">
-          <button className="pos-cat more" aria-label="Menu: hoạt động, báo cáo, hàng tồn…" onClick={onMore}>
+          <button className="pos-cat more" aria-label="Menu: hoạt động, báo cáo, két tiền…" onClick={onMore}>
             •••
           </button>
           {catNames.map((c) => (

@@ -16,7 +16,7 @@ const summaryHour = Number(process.env.DAY_SUMMARY_HOUR ?? 22);
 const db = openDb(dbPath);
 if (process.env.SEED !== '0') seedIfEmpty(db);
 // The shop's menu file (product/z.product) is the source of truth for products and tables.
-if (process.env.MENU_SYNC !== '0') watchMenu(db, { sampleStock: process.env.SEED !== '0' });
+if (process.env.MENU_SYNC !== '0') watchMenu(db);
 // Demo sales sell the imported menu, so they run after it.
 if (process.env.SEED !== '0' && process.env.SEED_DEMO_SALES === '1') seedDemoSales(db);
 

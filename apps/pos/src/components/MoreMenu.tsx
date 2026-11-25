@@ -29,7 +29,6 @@ export function MoreMenu({ items, onPick, onClose }: { items: MoreItem[]; onPick
 export const ICON = {
   activity: 'M7 3h10v18H7zM10 7h4M10 11h4M10 15h3',
   report: 'M12 3a9 9 0 1 0 9 9h-9zM14 3.3A9 9 0 0 1 20.7 10H14z',
-  stock: 'M4 5h16v6H4zM4 13h16v6H4zM10 8h4M10 16h4',
   staff: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20a6 6 0 0 1 12 0M16 11a3 3 0 1 0 0-6M17 14a5 5 0 0 1 4 6',
   cash: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM14.5 9.5c-.5-1-1.4-1.5-2.5-1.5-1.5 0-2.5.8-2.5 2s1 1.7 2.5 2 2.5.8 2.5 2-1 2-2.5 2c-1.2 0-2.1-.5-2.6-1.5M12 6.5V8M12 16v1.5',
   menu: 'M4 6h16M4 12h16M4 18h10',

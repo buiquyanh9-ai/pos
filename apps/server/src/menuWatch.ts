@@ -10,12 +10,12 @@ export function defaultMenuPath() {
 }
 
 /** Import the menu at startup if the file changed, then re-import whenever it is saved. */
-export function watchMenu(db: DB, opts: { sampleStock?: boolean } = {}) {
+export function watchMenu(db: DB) {
   const file = defaultMenuPath();
   if (!existsSync(file)) return console.log(`  Menu file: not found (${file}), using the menu in the database`);
   const run = () => {
     try {
-      const r = importMenu(db, readFileSync(file, 'utf8'), opts);
+      const r = importMenu(db, readFileSync(file, 'utf8'));
       if (r.changed) console.log(`  Menu imported from ${file}: ${r.products} món, ${r.categories} danh mục, ẩn ${r.deactivated}`);
       r.warnings.forEach((w) => console.warn(`  ! menu: ${w}`));
     } catch (err) {

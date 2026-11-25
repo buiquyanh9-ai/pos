@@ -6,7 +6,7 @@ const out=path.resolve(process.env.BOSS_AUDIT_OUT||'output/boss-audit');fs.mkdir
   const {seedIfEmpty}=await import('../apps/server/src/seed.ts');
   const {importMenu}=await import('../apps/server/src/menu.ts');
   const {createApp}=await import('../apps/server/src/app.ts');
-  const db=openDb(':memory:');seedIfEmpty(db);importMenu(db,fs.readFileSync('../product/z.product','utf8'),{sampleStock:true});
+  const db=openDb(':memory:');seedIfEmpty(db);importMenu(db,fs.readFileSync('../product/z.product','utf8'));
   const server=createApp({db}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
   const root=`http://127.0.0.1:${server.address().port}`;
   const session=await(await fetch(root+'/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'chu',password:'chu123456'})})).json();

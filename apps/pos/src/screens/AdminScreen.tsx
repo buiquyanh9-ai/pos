@@ -3,30 +3,27 @@ import { api, type ProductInput } from '../lib/api';
 import { money } from '../lib/format';
 import { notify } from '../lib/notify';
 import { remote, syncNow } from '../lib/store';
-import { ROLE_LABEL, type Category, type DiningTable, type InventoryItem, type OptionGroup, type Product, type Role, type Supplier, type User } from '../lib/types';
+import { ROLE_LABEL, type Category, type DiningTable, type OptionGroup, type Product, type Role, type User } from '../lib/types';
 import { Modal } from '../components/Modal';
 
-// Owner back-office on the POS: menu (products, prices, categories, options, recipes), tables, staff, stock items.
+// Owner back-office on the POS: menu (products, prices, categories, options), tables, staff.
 
-type Section = 'products' | 'options' | 'tables' | 'items' | 'suppliers' | 'staff';
-type AdminProduct = Product & { recipe: { itemId: string; itemName: string; unit: string; qty: number }[] };
+type Section = 'products' | 'options' | 'tables' | 'staff';
+type AdminProduct = Product;
 const fail = (e: unknown) => notify(e instanceof Error ? e.message : String(e), 'error');
 const num = (s: string) => Number(s.replace(/\./g, '').replace(',', '.'));
-const dec = (s: string) => Number(s.replace(',', '.'));
 
 export function AdminScreen() {
   const [section, setSection] = useState<Section>('products');
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<OptionGroup[]>([]);
-  const [items, setItems] = useState<InventoryItem[]>([]);
   const reload = useCallback(async () => {
     try {
-      const [cat, inv] = await Promise.all([remote(api.productsAll), remote(api.inventory)]);
+      const cat = await remote(api.productsAll);
       setProducts(cat.products);
       setCategories(cat.categories);
       setGroups(cat.optionGroups);
-      setItems(inv.items);
       void syncNow(); // refresh the sale screen's cached menu
     } catch (e) {
       fail(e);
@@ -37,8 +34,6 @@ export function AdminScreen() {
   const menu: [Section, string][] = [
     ['products', 'Món & giá bán'],
     ['options', 'Tuỳ chọn món'],
-    ['items', 'Nguyên liệu / hàng hoá'],
-    ['suppliers', 'Nhà cung cấp'],
     ['tables', 'Bàn'],
     ['staff', 'Nhân viên'],
   ];
@@ -53,11 +48,9 @@ export function AdminScreen() {
         ))}
       </nav>
       <section className="stock-body">
-        {section === 'products' && <Products products={products} categories={categories} groups={groups} items={items} onChanged={reload} />}
-        {section === 'options' && <Options groups={groups} items={items} onChanged={reload} />}
-        {section === 'items' && <Items items={items} onChanged={reload} />}
+        {section === 'products' && <Products products={products} categories={categories} groups={groups} onChanged={reload} />}
+        {section === 'options' && <Options groups={groups} onChanged={reload} />}
         {section === 'tables' && <Tables />}
-        {section === 'suppliers' && <Suppliers />}
         {section === 'staff' && <Staff />}
       </section>
     </div>
@@ -65,7 +58,7 @@ export function AdminScreen() {
 }
 
 // ---------------------------------------------------------------- products
-function Products({ products, categories, groups, items, onChanged }: { products: AdminProduct[]; categories: Category[]; groups: OptionGroup[]; items: InventoryItem[]; onChanged: () => void }) {
+function Products({ products, categories, groups, onChanged }: { products: AdminProduct[]; categories: Category[]; groups: OptionGroup[]; onChanged: () => void }) {
   const [editing, setEditing] = useState<AdminProduct | 'new' | null>(null);
   const [newCat, setNewCat] = useState('');
   return (
@@ -93,7 +86,6 @@ function Products({ products, categories, groups, items, onChanged }: { products
             <th>Món</th>
             <th>Danh mục</th>
             <th className="num">Giá bán</th>
-            <th className="num">Còn bán được</th>
             <th>Trạng thái</th>
           </tr>
         </thead>
@@ -106,7 +98,6 @@ function Products({ products, categories, groups, items, onChanged }: { products
               </td>
               <td>{p.category}</td>
               <td className="num">{money(p.price)}</td>
-              <td className="num">{p.stock === null ? <span className="muted">không theo dõi</span> : p.stock}</td>
               <td>{p.active ? <span className="pill pill-synced">Đang bán</span> : <span className="pill">Ngừng bán</span>}</td>
             </tr>
           ))}
@@ -117,7 +108,6 @@ function Products({ products, categories, groups, items, onChanged }: { products
           product={editing === 'new' ? null : editing}
           categories={categories}
           groups={groups}
-          items={items}
           onClose={() => setEditing(null)}
           onSaved={() => (setEditing(null), onChanged())}
         />
@@ -126,7 +116,7 @@ function Products({ products, categories, groups, items, onChanged }: { products
   );
 }
 
-function ProductForm({ product: p, categories, groups, items, onClose, onSaved }: { product: AdminProduct | null; categories: Category[]; groups: OptionGroup[]; items: InventoryItem[]; onClose: () => void; onSaved: () => void }) {
+function ProductForm({ product: p, categories, groups, onClose, onSaved }: { product: AdminProduct | null; categories: Category[]; groups: OptionGroup[]; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(p?.name ?? '');
   const [price, setPrice] = useState(String(p?.price ?? ''));
   const [categoryId, setCategoryId] = useState(p?.categoryId ?? categories[0]?.id ?? '');
@@ -135,11 +125,10 @@ function ProductForm({ product: p, categories, groups, items, onClose, onSaved }
   const [imageUrl, setImageUrl] = useState(p?.imageUrl ?? '');
   const [active, setActive] = useState(p?.active ?? true);
   const [optionIds, setOptionIds] = useState<string[]>(p?.optionGroups.map((g) => g.id) ?? []);
-  const [recipe, setRecipe] = useState<{ itemId: string; qty: string }[]>(p?.recipe.map((r) => ({ itemId: r.itemId, qty: String(r.qty) })) ?? []);
   const [busy, setBusy] = useState(false);
 
   const priceN = num(price);
-  const valid = name.trim() && Number.isInteger(priceN) && priceN >= 0 && recipe.every((r) => r.itemId && dec(r.qty) > 0);
+  const valid = name.trim() && Number.isInteger(priceN) && priceN >= 0;
 
   const save = async () => {
     setBusy(true);
@@ -152,7 +141,6 @@ function ProductForm({ product: p, categories, groups, items, onClose, onSaved }
       imageUrl: imageUrl.trim() || null,
       active,
       optionGroupIds: optionIds,
-      recipe: recipe.map((r) => ({ itemId: r.itemId, qty: dec(r.qty) })),
     };
     try {
       await remote(api.saveProduct, p?.id ?? null, body);
@@ -214,32 +202,6 @@ function ProductForm({ product: p, categories, groups, items, onClose, onSaved }
           })}
         </div>
 
-        <h3>Công thức (định mức nguyên liệu cho 1 phần)</h3>
-        <p className="muted small">Bán 1 phần sẽ tự trừ kho theo công thức. Không có công thức = không theo dõi tồn kho món này.</p>
-        {recipe.map((r, i) => {
-          const it = items.find((x) => x.id === r.itemId);
-          return (
-            <div key={i} className="recipe-row">
-              <select value={r.itemId} onChange={(e) => setRecipe(recipe.map((x, j) => (j === i ? { ...x, itemId: e.target.value } : x)))}>
-                <option value="">— Chọn nguyên liệu —</option>
-                {items.map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {x.name} ({x.unit})
-                  </option>
-                ))}
-              </select>
-              <input inputMode="decimal" value={r.qty} onChange={(e) => setRecipe(recipe.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} placeholder="Định mức" />
-              <span className="muted small">{it ? it.unit : ''}</span>
-              <button className="icon-btn" aria-label="Xoá dòng" onClick={() => setRecipe(recipe.filter((_, j) => j !== i))}>
-                ✕
-              </button>
-            </div>
-          );
-        })}
-        <button className="btn secondary" onClick={() => setRecipe([...recipe, { itemId: '', qty: '' }])}>
-          ＋ Thêm nguyên liệu
-        </button>
-
         <label className="check">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Đang bán
         </label>
@@ -252,7 +214,7 @@ function ProductForm({ product: p, categories, groups, items, onClose, onSaved }
 }
 
 // ---------------------------------------------------------------- option groups
-function Options({ groups, items, onChanged }: { groups: OptionGroup[]; items: InventoryItem[]; onChanged: () => void }) {
+function Options({ groups, onChanged }: { groups: OptionGroup[]; onChanged: () => void }) {
   const [editing, setEditing] = useState<OptionGroup | 'new' | null>(null);
   return (
     <>
@@ -283,31 +245,28 @@ function Options({ groups, items, onChanged }: { groups: OptionGroup[]; items: I
           ))}
         </tbody>
       </table>
-      {editing && <OptionForm group={editing === 'new' ? null : editing} items={items} onClose={() => setEditing(null)} onSaved={() => (setEditing(null), onChanged())} />}
+      {editing && <OptionForm group={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => (setEditing(null), onChanged())} />}
     </>
   );
 }
 
-function OptionForm({ group: g, items, onClose, onSaved }: { group: OptionGroup | null; items: InventoryItem[]; onClose: () => void; onSaved: () => void }) {
+function OptionForm({ group: g, onClose, onSaved }: { group: OptionGroup | null; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(g?.name ?? '');
   const [multi, setMulti] = useState(g?.multi ?? false);
   const [required, setRequired] = useState(g?.required ?? false);
-  type Row = { id?: string; name: string; price: string; factor: string; itemId: string; itemQty: string };
+  type Row = { id?: string; name: string; price: string };
   const [options, setOptions] = useState<Row[]>(
     g?.options.map((o) => ({
       id: o.id,
       name: o.name,
       price: String(o.priceDelta),
-      factor: String(o.recipeFactor ?? 1),
-      itemId: o.recipe?.[0]?.itemId ?? '',
-      itemQty: o.recipe?.[0] ? String(o.recipe[0].qty) : '',
-    })) ?? [{ name: '', price: '0', factor: '1', itemId: '', itemQty: '' }],
+    })) ?? [{ name: '', price: '0' }],
   );
   const set = (i: number, patch: Partial<Row>) => setOptions(options.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const valid =
     name.trim() &&
     options.length > 0 &&
-    options.every((o) => o.name.trim() && Number.isInteger(num(o.price || '0')) && dec(o.factor || '1') > 0 && (!o.itemId || dec(o.itemQty) > 0));
+    options.every((o) => o.name.trim() && Number.isInteger(num(o.price || '0')));
   return (
     <Modal title={g ? `Sửa: ${g.name}` : 'Nhóm tuỳ chọn mới'} onClose={onClose}>
       <div className="admin-form">
@@ -321,29 +280,16 @@ function OptionForm({ group: g, items, onClose, onSaved }: { group: OptionGroup 
         <label className="check">
           <input type="checkbox" checked={multi} onChange={(e) => setMulti(e.target.checked)} /> Cho chọn nhiều (topping)
         </label>
-        <p className="muted small">
-          Hệ số định mức nhân toàn bộ công thức món (vd size L = 1,4). Nguyên liệu thêm dùng cho topping (vd Thêm trân châu = 0,03 kg trân châu).
-        </p>
         {options.map((o, i) => (
           <div key={i} className="option-edit">
             <input value={o.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="Tên lựa chọn" />
             <input inputMode="numeric" value={o.price} onChange={(e) => set(i, { price: e.target.value })} placeholder="+ giá" title="Giá cộng thêm" />
-            <input inputMode="decimal" value={o.factor} onChange={(e) => set(i, { factor: e.target.value })} placeholder="Hệ số" title="Hệ số định mức" />
-            <select value={o.itemId} onChange={(e) => set(i, { itemId: e.target.value })} title="Nguyên liệu thêm">
-              <option value="">— Không dùng thêm —</option>
-              {items.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.name} ({x.unit})
-                </option>
-              ))}
-            </select>
-            <input inputMode="decimal" value={o.itemQty} disabled={!o.itemId} onChange={(e) => set(i, { itemQty: e.target.value })} placeholder="Lượng" />
             <button className="icon-btn" aria-label="Xoá" onClick={() => setOptions(options.filter((_, j) => j !== i))}>
               ✕
             </button>
           </div>
         ))}
-        <button className="btn secondary" onClick={() => setOptions([...options, { name: '', price: '0', factor: '1', itemId: '', itemQty: '' }])}>
+        <button className="btn secondary" onClick={() => setOptions([...options, { name: '', price: '0' }])}>
           ＋ Lựa chọn
         </button>
         <button
@@ -358,152 +304,9 @@ function OptionForm({ group: g, items, onClose, onSaved }: { group: OptionGroup 
                 id: o.id,
                 name: o.name.trim(),
                 priceDelta: num(o.price || '0'),
-                recipeFactor: dec(o.factor || '1'),
-                recipe: o.itemId ? [{ itemId: o.itemId, qty: dec(o.itemQty) }] : [],
               })),
             })
               .then(() => (notify('Đã lưu tuỳ chọn', 'success'), onSaved()))
-              .catch(fail)
-          }
-        >
-          Lưu
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------- inventory items
-function Items({ items, onChanged }: { items: InventoryItem[]; onChanged: () => void }) {
-  const [editing, setEditing] = useState<InventoryItem | 'new' | null>(null);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const loadSuppliers = useCallback(() => remote(api.suppliers).then((r) => setSuppliers(r.suppliers)).catch(() => undefined), []);
-  useEffect(() => void loadSuppliers(), [loadSuppliers]);
-  return (
-    <>
-      <div className="stock-actions">
-        <button className="btn primary" onClick={() => setEditing('new')}>
-          ＋ Nguyên liệu / hàng hoá
-        </button>
-      </div>
-      <table className="stock-table">
-        <thead>
-          <tr>
-            <th>Tên</th>
-            <th>Loại</th>
-            <th>Đơn vị</th>
-            <th className="num">Tối thiểu</th>
-            <th>Nhà cung cấp</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((i) => (
-            <tr key={i.id} className="clickable" onClick={() => setEditing(i)}>
-              <td>
-                <strong>{i.name}</strong>
-              </td>
-              <td className="muted">{i.kind === 'goods' ? 'Hàng hoá' : 'Nguyên liệu'}</td>
-              <td>{i.unit}</td>
-              <td className="num">{i.minQty}</td>
-              <td className="muted">{suppliers.find((s) => s.id === i.supplierId)?.name ?? '—'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {editing && (
-        <ItemForm
-          item={editing === 'new' ? null : editing}
-          suppliers={suppliers}
-          onSupplierAdded={loadSuppliers}
-          onClose={() => setEditing(null)}
-          onSaved={() => (setEditing(null), onChanged())}
-        />
-      )}
-    </>
-  );
-}
-
-function ItemForm({ item: it, suppliers, onSupplierAdded, onClose, onSaved }: { item: InventoryItem | null; suppliers: Supplier[]; onSupplierAdded: () => Promise<unknown>; onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState(it?.name ?? '');
-  const [unit, setUnit] = useState(it?.unit ?? 'kg');
-  const [kind, setKind] = useState<'ingredient' | 'goods'>(it?.kind ?? 'ingredient');
-  const [minQty, setMinQty] = useState(String(it?.minQty ?? 0));
-  const [supplierId, setSupplierId] = useState(it?.supplierId ?? '');
-  const [newSupplier, setNewSupplier] = useState<string | null>(null);
-  const [qty, setQty] = useState('0');
-  const valid = name.trim() && unit.trim() && dec(minQty) >= 0;
-  const addSupplier = () =>
-    remote(api.saveSupplier, null, { name: newSupplier!.trim() })
-      .then(async (s) => (await onSupplierAdded(), setSupplierId(s.id), setNewSupplier(null), notify('Đã thêm nhà cung cấp', 'success')))
-      .catch(fail);
-  return (
-    <Modal title={it ? `Sửa: ${it.name}` : 'Nguyên liệu / hàng hoá mới'} onClose={onClose}>
-      <div className="admin-form">
-        <label className="field">
-          Tên
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <div className="admin-grid">
-          <label className="field">
-            Đơn vị
-            <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="kg, l, cái, chai…" />
-          </label>
-          <label className="field">
-            Loại
-            <select value={kind} onChange={(e) => setKind(e.target.value as 'ingredient' | 'goods')}>
-              <option value="ingredient">Nguyên liệu</option>
-              <option value="goods">Hàng hoá bán nguyên</option>
-            </select>
-          </label>
-          <label className="field">
-            Tồn tối thiểu (cảnh báo)
-            <input inputMode="decimal" value={minQty} onChange={(e) => setMinQty(e.target.value)} />
-          </label>
-          <label className="field">
-            Nhà cung cấp
-            {newSupplier === null ? (
-              <select value={supplierId} onChange={(e) => (e.target.value === '+' ? setNewSupplier('') : setSupplierId(e.target.value))}>
-                <option value="">— Chưa chọn —</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-                <option value="+">＋ Thêm nhà cung cấp mới…</option>
-              </select>
-            ) : (
-              <span className="inline-add">
-                <input value={newSupplier} onChange={(e) => setNewSupplier(e.target.value)} placeholder="Tên nhà cung cấp" autoFocus />
-                <button className="btn primary" disabled={!newSupplier.trim()} onClick={addSupplier}>
-                  Thêm
-                </button>
-                <button className="btn secondary" onClick={() => setNewSupplier(null)}>
-                  Huỷ
-                </button>
-              </span>
-            )}
-          </label>
-          {!it && (
-            <label className="field">
-              Tồn đầu kỳ
-              <input inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} />
-            </label>
-          )}
-        </div>
-        {it && <p className="muted small">Thay đổi số lượng tồn ở mục Kho → Điều chỉnh / Kiểm kê, để có lịch sử và lý do.</p>}
-        <button
-          className="btn primary big full"
-          disabled={!valid}
-          onClick={() =>
-            remote(api.saveInventoryItem, it?.id ?? null, {
-              name: name.trim(),
-              unit: unit.trim(),
-              kind,
-              minQty: dec(minQty),
-              supplierId: supplierId || null,
-              ...(it ? {} : { qty: dec(qty) || 0 }),
-            })
-              .then(() => (notify('Đã lưu', 'success'), onSaved()))
               .catch(fail)
           }
         >
@@ -569,87 +372,6 @@ function Tables() {
         </section>
       ))}
     </>
-  );
-}
-
-// ---------------------------------------------------------------- suppliers
-function Suppliers() {
-  const [list, setList] = useState<Supplier[]>([]);
-  const [editing, setEditing] = useState<Supplier | 'new' | null>(null);
-  const reload = useCallback(() => remote(api.suppliers).then((r) => setList(r.suppliers)).catch(fail), []);
-  useEffect(() => void reload(), [reload]);
-  return (
-    <>
-      <div className="stock-actions">
-        <button className="btn primary" onClick={() => setEditing('new')}>
-          ＋ Nhà cung cấp
-        </button>
-      </div>
-      <table className="stock-table">
-        <thead>
-          <tr>
-            <th>Tên</th>
-            <th>Điện thoại</th>
-            <th>Ghi chú</th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((s) => (
-            <tr key={s.id} className="clickable" onClick={() => setEditing(s)}>
-              <td>
-                <strong>{s.name}</strong>
-              </td>
-              <td>{s.phone}</td>
-              <td className="muted">{s.note}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {!list.length && <p className="empty">Chưa có nhà cung cấp</p>}
-      {editing && <SupplierForm supplier={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => (setEditing(null), reload())} />}
-    </>
-  );
-}
-
-function SupplierForm({ supplier: s, onClose, onSaved }: { supplier: Supplier | null; onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState(s?.name ?? '');
-  const [phone, setPhone] = useState(s?.phone ?? '');
-  const [note, setNote] = useState(s?.note ?? '');
-  return (
-    <Modal title={s ? `Nhà cung cấp: ${s.name}` : 'Nhà cung cấp mới'} onClose={onClose}>
-      <div className="admin-form">
-        <label className="field">
-          Tên
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label className="field">
-          Điện thoại
-          <input inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
-        </label>
-        <label className="field">
-          Ghi chú (mặt hàng, lịch giao…)
-          <input value={note} onChange={(e) => setNote(e.target.value)} />
-        </label>
-        <div className="cart-actions">
-          {s && (
-            <button className="btn secondary" onClick={() => remote(api.saveSupplier, s.id, { active: false }).then(onSaved).catch(fail)}>
-              Ngừng hợp tác
-            </button>
-          )}
-          <button
-            className="btn primary big"
-            disabled={!name.trim()}
-            onClick={() =>
-              remote(api.saveSupplier, s?.id ?? null, { name: name.trim(), phone: phone.trim(), note: note.trim() })
-                .then(() => (notify('Đã lưu nhà cung cấp', 'success'), onSaved()))
-                .catch(fail)
-            }
-          >
-            Lưu
-          </button>
-        </div>
-      </div>
-    </Modal>
   );
 }
 

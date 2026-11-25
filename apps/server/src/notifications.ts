@@ -5,26 +5,16 @@ import { type DB, now } from './db.ts';
 import { publish } from './events.ts';
 
 export type NotificationType =
-  | 'stock.low'
-  | 'stock.variance'
   | 'shift.closed'
   | 'day.summary'
-  | 'purchase.pending'
-  | 'purchase.decided'
   | 'order.refunded'
-  | 'order.voided'
-  | 'kitchen.closed';
+  | 'order.voided';
 
 export const NOTIFICATION_TYPES: { type: NotificationType; label: string }[] = [
-  { type: 'stock.low', label: 'Hàng sắp hết / dưới ngưỡng' },
-  { type: 'stock.variance', label: 'Chênh lệch kho khi kiểm kê' },
   { type: 'shift.closed', label: 'Tổng kết ca' },
   { type: 'day.summary', label: 'Tổng kết cuối ngày' },
-  { type: 'purchase.pending', label: 'Đề xuất nhập hàng chờ duyệt' },
-  { type: 'purchase.decided', label: 'Đề xuất nhập hàng đã duyệt/từ chối' },
   { type: 'order.refunded', label: 'Đơn hoàn tiền' },
   { type: 'order.voided', label: 'Đơn bị huỷ' },
-  { type: 'kitchen.closed', label: 'Tổng kết bếp cuối ca (gạo, rau, trà)' },
 ];
 
 export interface NewNotification {

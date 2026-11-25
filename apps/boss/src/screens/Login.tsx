@@ -30,7 +30,7 @@ export function Login() {
       <div className="login-brand">
         <img src="./logo.svg" alt="" width="64" height="64" className="login-logo" />
         <h1>ShopFlow Boss</h1>
-        <p className="muted">Theo dõi doanh thu và kho hàng từ xa</p>
+        <p className="muted">Theo dõi doanh thu cửa hàng từ xa</p>
       </div>
       <form className="login-form" onSubmit={submit}>
         <label>

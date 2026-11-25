@@ -1,19 +1,13 @@
 import type {
   Category,
   DiningTable,
-  InventoryItem,
-  KitchenSession,
   LocalOrder,
   OpenOrder,
   OptionGroup,
   Product,
-  Purchase,
   Shift,
   ShiftReport,
-  StockMove,
-  Stocktake,
   Summary,
-  Supplier,
   User,
 } from './types';
 
@@ -111,7 +105,6 @@ export interface ProductInput {
   imageUrl?: string | null;
   active?: boolean;
   optionGroupIds?: string[];
-  recipe?: { itemId: string; qty: number }[];
 }
 
 export interface Health {
@@ -163,7 +156,7 @@ export const api = {
     request<{ orders: (Omit<LocalOrder, 'sync'> & { statusReason: string })[] }>(c, 'GET', `/orders${q({ ...p, limit: p.limit ?? 500 })}`),
   voidOrder: (c: ApiConfig, id: string, reason: string) =>
     request<{ status: string }>(c, 'POST', `/orders/${encodeURIComponent(id)}/void`, { reason }),
-  refundOrder: (c: ApiConfig, id: string, body: { reason: string; restock?: boolean; shiftId?: string }) =>
+  refundOrder: (c: ApiConfig, id: string, body: { reason: string; shiftId?: string }) =>
     request<{ status: string }>(c, 'POST', `/orders/${encodeURIComponent(id)}/refund`, body),
 
   // ---- open (unpaid) bills
@@ -188,58 +181,17 @@ export const api = {
   summary: (c: ApiConfig, p: { from: string; to: string; shiftId?: string; compare?: boolean }) =>
     request<Summary>(c, 'GET', `/reports/summary${q({ from: p.from, to: p.to, shiftId: p.shiftId, compare: p.compare ? 1 : undefined })}`),
 
-  // ---- inventory
-  inventory: (c: ApiConfig, p: { low?: boolean } = {}) =>
-    request<{ items: InventoryItem[] }>(c, 'GET', `/inventory/items${q({ low: p.low ? 1 : undefined })}`),
-  adjustStock: (c: ApiConfig, itemId: string, body: { delta?: number; qty?: number; reason: string }) =>
-    request<InventoryItem>(c, 'POST', `/inventory/items/${encodeURIComponent(itemId)}/adjust`, body),
-  stockMoves: (c: ApiConfig, p: { itemId?: string; type?: string; from?: string; to?: string; limit?: number } = {}) =>
-    request<{ moves: StockMove[] }>(c, 'GET', `/inventory/moves${q(p)}`),
-  createStocktake: (c: ApiConfig, body: { shiftId?: string; note?: string; lines: { itemId: string; counted: number; reason?: string }[] }) =>
-    request<Stocktake>(c, 'POST', '/inventory/stocktakes', body),
-  stocktakes: (c: ApiConfig) => request<{ stocktakes: Stocktake[] }>(c, 'GET', '/inventory/stocktakes'),
-
-  wasteStock: (c: ApiConfig, itemId: string, qty: number, reason: string) =>
-    request<{ ok: boolean }>(c, 'POST', `/inventory/items/${encodeURIComponent(itemId)}/waste`, { qty, reason }),
-
-  // ---- kitchen (estimate stock: rice, vegetables, tea)
-  kitchenCurrent: (c: ApiConfig) =>
-    request<{ session: KitchenSession | null; items: { itemId: string; name: string; unit: string; stock: number; defaultIssue: number | null }[] }>(c, 'GET', '/kitchen/current'),
-  kitchenOpen: (c: ApiConfig, body: { shiftId?: string; lines: { itemId: string; qty: number }[] }) => request<KitchenSession>(c, 'POST', '/kitchen/open', body),
-  kitchenAdd: (c: ApiConfig, id: string, lines: { itemId: string; qty: number }[]) =>
-    request<KitchenSession>(c, 'POST', `/kitchen/${encodeURIComponent(id)}/add`, { lines }),
-  kitchenClose: (c: ApiConfig, id: string, lines: { itemId: string; remaining: number; waste?: number; reason?: string }[]) =>
-    request<KitchenSession>(c, 'POST', `/kitchen/${encodeURIComponent(id)}/close`, { lines }),
-  kitchenSessions: (c: ApiConfig) => request<{ sessions: KitchenSession[] }>(c, 'GET', '/kitchen/sessions'),
-
-  importStock: (c: ApiConfig, body: { supplierId?: string; note?: string; lines: { itemId: string; qty: number; unitCost?: number }[] }) =>
-    request<{ id: string; total: number }>(c, 'POST', '/inventory/import', body),
-
-  // ---- purchasing
-  suppliers: (c: ApiConfig) => request<{ suppliers: Supplier[] }>(c, 'GET', '/suppliers'),
-  purchases: (c: ApiConfig, status?: string) => request<{ purchases: Purchase[] }>(c, 'GET', `/purchases${q({ status })}`),
-  purchaseSuggestions: (c: ApiConfig) =>
-    request<{ lines: { itemId: string; name: string; unit: string; currentStock: number; minQty: number; qty: number; unitCost: number; supplierId: string | null }[] }>(
-      c,
-      'GET',
-      '/purchases/suggestions',
-    ),
-  createPurchase: (c: ApiConfig, body: { supplierId?: string; note?: string; lines: { itemId: string; qty: number; unitCost?: number }[] }) =>
-    request<Purchase>(c, 'POST', '/purchases', body),
-  receivePurchase: (c: ApiConfig, id: string, lines?: { itemId: string; receivedQty?: number; unitCost?: number }[]) =>
-    request<Purchase>(c, 'POST', `/purchases/${encodeURIComponent(id)}/receive`, lines ? { lines } : {}),
-
-  // ---- owner: menu, tables, staff, inventory items
+  // ---- owner: menu, tables, staff
   saveProduct: (c: ApiConfig, id: string | null, body: ProductInput) =>
     id ? request<Product>(c, 'PUT', `/products/${encodeURIComponent(id)}`, body) : request<Product>(c, 'POST', '/products', body),
   deleteProduct: (c: ApiConfig, id: string) => request<null>(c, 'DELETE', `/products/${encodeURIComponent(id)}`),
-  productsAll: (c: ApiConfig) => request<Catalog & { products: (Product & { recipe: { itemId: string; itemName: string; unit: string; qty: number }[] })[] }>(c, 'GET', '/products?includeInactive=1'),
+  productsAll: (c: ApiConfig) => request<Catalog>(c, 'GET', '/products?includeInactive=1'),
   saveCategory: (c: ApiConfig, id: string | null, body: { name?: string; sort?: number; active?: boolean }) =>
     request<{ ok?: boolean; id?: string }>(c, id ? 'PUT' : 'POST', id ? `/categories/${encodeURIComponent(id)}` : '/categories', body),
   saveOptionGroup: (
     c: ApiConfig,
     id: string | null,
-    body: { name?: string; multi?: boolean; required?: boolean; options?: { id?: string; name: string; priceDelta: number; recipeFactor?: number; recipe?: { itemId: string; qty: number }[] }[] },
+    body: { name?: string; multi?: boolean; required?: boolean; options?: { id?: string; name: string; priceDelta: number }[] },
   ) =>
     id ? request<OptionGroup>(c, 'PUT', `/option-groups/${encodeURIComponent(id)}`, body) : request<OptionGroup>(c, 'POST', '/option-groups', body),
   saveTable: (c: ApiConfig, id: string | null, body: { name?: string; area?: string; sort?: number; active?: boolean }) =>
@@ -247,15 +199,6 @@ export const api = {
   users: (c: ApiConfig) => request<{ users: (User & { active: boolean; hasPin: boolean; hasPassword: boolean })[] }>(c, 'GET', '/users'),
   saveUser: (c: ApiConfig, id: string | null, body: { username?: string; name?: string; role?: string; pin?: string; password?: string; active?: boolean }) =>
     id ? request<User>(c, 'PUT', `/users/${encodeURIComponent(id)}`, body) : request<User>(c, 'POST', '/users', body),
-  saveInventoryItem: (
-    c: ApiConfig,
-    id: string | null,
-    body: { name?: string; unit?: string; kind?: 'ingredient' | 'goods'; minQty?: number; unitCost?: number; qty?: number; supplierId?: string | null; active?: boolean },
-  ) => (id ? request<InventoryItem>(c, 'PUT', `/inventory/items/${encodeURIComponent(id)}`, body) : request<InventoryItem>(c, 'POST', '/inventory/items', body)),
-
-  saveSupplier: (c: ApiConfig, id: string | null, body: { name?: string; phone?: string; note?: string; active?: boolean }) =>
-    id ? request<Supplier>(c, 'PUT', `/suppliers/${encodeURIComponent(id)}`, body) : request<Supplier>(c, 'POST', '/suppliers', body),
-
   // ---- store-wide settings (receipt header, bank account for transfers)
   store: (c: ApiConfig) => request<StoreInfo>(c, 'GET', '/store'),
   saveStore: (c: ApiConfig, body: Partial<StoreInfo>) => request<StoreInfo>(c, 'PUT', '/store', body),
@@ -264,10 +207,6 @@ export const api = {
   cashMoves: (c: ApiConfig, shiftId: string) => request<{ moves: CashMove[] }>(c, 'GET', `/shifts/${encodeURIComponent(shiftId)}/cash`),
   addCash: (c: ApiConfig, shiftId: string, body: { type: 'in' | 'out'; amount: number; reason: string }) =>
     request<CashMove>(c, 'POST', `/shifts/${encodeURIComponent(shiftId)}/cash`, body),
-
-  // ---- stock movement totals per item and type over a period
-  usage: (c: ApiConfig, from: string, to: string) =>
-    request<{ usage: Record<string, Partial<Record<string, number>>> }>(c, 'GET', `/inventory/usage${q({ from, to })}`),
 
   // ---- devices
   heartbeat: (c: ApiConfig, d: { id: string; name: string; appVersion: string }) =>

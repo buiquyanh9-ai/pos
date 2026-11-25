@@ -60,13 +60,9 @@ export function Home({ go }: { go: (t: Tab) => void }) {
               />
             </Card>
             <div className="alerts">
-              <button className={data.lowStockCount ? 'alert warn' : 'alert'} onClick={() => go('stock')}>
-                <strong>{data.lowStockCount}</strong>
-                <span>mặt hàng dưới ngưỡng</span>
-              </button>
-              <button className={data.pendingPurchases ? 'alert warn' : 'alert'} onClick={() => go('stock')}>
-                <strong>{data.pendingPurchases}</strong>
-                <span>đề xuất nhập chờ duyệt</span>
+              <button className="alert" onClick={() => go('reports')}>
+                <strong>{data.openShifts}</strong>
+                <span>ca đang mở</span>
               </button>
               <button className="alert" onClick={() => go('activity')}>
                 <strong>{data.openOrders.count}</strong>

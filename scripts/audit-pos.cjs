@@ -10,7 +10,7 @@ fs.mkdirSync(out, { recursive: true });
   const { createApp } = await import('../apps/server/src/app.ts');
   const db = openDb(':memory:');
   seedIfEmpty(db);
-  importMenu(db, fs.readFileSync('../product/z.product', 'utf8'), { sampleStock: true });
+  importMenu(db, fs.readFileSync('../product/z.product', 'utf8'));
   const server = createApp({ db }).listen(0, '127.0.0.1');
   await new Promise(r => server.once('listening', r));
   const root = `http://127.0.0.1:${server.address().port}`;
@@ -149,9 +149,9 @@ fs.mkdirSync(out, { recursive: true });
         if(persisted!==1)throw Error('Expected exactly one synced order, got '+persisted);
         return {persisted};
       });
-      for(const screen of ['Hoạt động','Báo cáo','Hàng tồn','Nhân viên & thực đơn','Két tiền','Cài đặt']) {
+      for(const screen of ['Hoạt động','Báo cáo','Nhân viên & thực đơn','Két tiền','Cài đặt']) {
         await home();
-        await step('screen-'+['Hoạt động','Báo cáo','Hàng tồn','Nhân viên & thực đơn','Két tiền','Cài đặt'].indexOf(screen),async()=>{
+        await step('screen-'+['Hoạt động','Báo cáo','Nhân viên & thực đơn','Két tiền','Cài đặt'].indexOf(screen),async()=>{
           await page.locator('.pos-cat.more').click();
           await page.getByRole('menuitem',{name:screen,exact:true}).click(); await page.waitForTimeout(400);
           if(screen==='Hoạt động') {

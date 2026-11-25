@@ -3,18 +3,16 @@ import { Login } from './screens/Login';
 import { Home } from './screens/Home';
 import { Reports } from './screens/Reports';
 import { Activity } from './screens/Activity';
-import { Stock } from './screens/Stock';
 import { More, Notifications } from './screens/More';
 import { onServerEvent, startLive, useBoss } from './lib/store';
 import { InstallHint } from './components/InstallHint';
 
-export type Tab = 'home' | 'reports' | 'activity' | 'stock' | 'more' | 'notifications';
+export type Tab = 'home' | 'reports' | 'activity' | 'more' | 'notifications';
 
 const TABS: { id: Exclude<Tab, 'notifications'>; label: string; icon: string }[] = [
   { id: 'home', label: 'Tổng quan', icon: 'M4 13h6V4H4zM14 20h6V11h-6zM4 20h6v-3H4zM14 7h6V4h-6z' },
   { id: 'reports', label: 'Báo cáo', icon: 'M5 20V10M12 20V4M19 20v-7' },
   { id: 'activity', label: 'Hoạt động', icon: 'M6 3h12v18H6zM9 8h6M9 12h6M9 16h4' },
-  { id: 'stock', label: 'Kho', icon: 'M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8' },
   { id: 'more', label: 'Thêm', icon: 'M5 12h.01M12 12h.01M19 12h.01' },
 ];
 
@@ -69,7 +67,6 @@ export function App() {
         {tab === 'home' && <Home go={setTab} />}
         {tab === 'reports' && <Reports />}
         {tab === 'activity' && <Activity />}
-        {tab === 'stock' && <Stock />}
         {tab === 'more' && <More openNotifications={() => setTab('notifications')} />}
         {tab === 'notifications' && <Notifications onBack={() => setTab('home')} />}
       </main>

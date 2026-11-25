@@ -3,7 +3,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { type DB, now } from './db.ts';
 import { HttpError } from './validate.ts';
 
-// Two roles: the owner (mostly remote, Boss app) and cashiers (POS: selling and all stock work).
+// Two roles: the owner (mostly remote, Boss app) and cashiers (POS: selling, shifts and the cash drawer).
 export type Role = 'owner' | 'cashier';
 export const ROLES: Role[] = ['owner', 'cashier'];
 

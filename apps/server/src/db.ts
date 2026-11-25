@@ -5,7 +5,7 @@ import { dirname } from 'node:path';
 export type DB = DatabaseSync;
 export type Row = Record<string, unknown>;
 
-// All SQL lives behind small module functions (catalog, orders, inventory, ...), so a move to
+// All SQL lives behind small module functions (catalog, orders, reports, ...), so a move to
 // PostgreSQL later means rewriting those modules, not the HTTP layer or the apps.
 
 const ORDERS_DDL = `
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS products (
   name       TEXT NOT NULL,
   category   TEXT NOT NULL DEFAULT '',     -- legacy v1 text category, kept in sync with category_id
   price      INTEGER NOT NULL CHECK (price >= 0),
-  stock      INTEGER NOT NULL DEFAULT 0,   -- legacy v1 column, unused (stock now lives in inventory_items)
+  stock      INTEGER NOT NULL DEFAULT 0,   -- legacy v1 column, unused
   active     INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL
 );
@@ -97,13 +97,6 @@ CREATE TABLE IF NOT EXISTS options (
   price_delta INTEGER NOT NULL DEFAULT 0,
   sort        INTEGER NOT NULL DEFAULT 0
 );
--- Extra stock used when an option is chosen (e.g. topping "Thêm trân châu" uses 0.03 kg trân châu).
-CREATE TABLE IF NOT EXISTS option_recipes (
-  option_id TEXT NOT NULL REFERENCES options(id) ON DELETE CASCADE,
-  item_id   TEXT NOT NULL REFERENCES inventory_items(id),
-  qty       REAL NOT NULL CHECK (qty > 0),
-  PRIMARY KEY (option_id, item_id)
-);
 CREATE TABLE IF NOT EXISTS product_option_groups (
   product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   group_id   TEXT NOT NULL REFERENCES option_groups(id) ON DELETE CASCADE,
@@ -117,114 +110,6 @@ CREATE TABLE IF NOT EXISTS dining_tables (
   area   TEXT NOT NULL DEFAULT '',
   sort   INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1
-);
-
--- ---------- inventory
-CREATE TABLE IF NOT EXISTS suppliers (
-  id     TEXT PRIMARY KEY,
-  name   TEXT NOT NULL,
-  phone  TEXT NOT NULL DEFAULT '',
-  note   TEXT NOT NULL DEFAULT '',
-  active INTEGER NOT NULL DEFAULT 1
-);
-
-CREATE TABLE IF NOT EXISTS inventory_items (
-  id          TEXT PRIMARY KEY,
-  name        TEXT NOT NULL,
-  unit        TEXT NOT NULL,               -- kg, l, cai, chai ...
-  kind        TEXT NOT NULL DEFAULT 'ingredient' CHECK (kind IN ('ingredient','goods')),
-  qty         REAL NOT NULL DEFAULT 0,
-  min_qty     REAL NOT NULL DEFAULT 0,
-  unit_cost   INTEGER NOT NULL DEFAULT 0,  -- VND per unit, for COGS
-  supplier_id TEXT REFERENCES suppliers(id),
-  active      INTEGER NOT NULL DEFAULT 1,
-  updated_at  TEXT NOT NULL
-);
-
--- Bill of materials: how much of each inventory item one unit of a product consumes.
-CREATE TABLE IF NOT EXISTS recipes (
-  product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  item_id    TEXT NOT NULL REFERENCES inventory_items(id),
-  qty        REAL NOT NULL CHECK (qty > 0),
-  PRIMARY KEY (product_id, item_id)
-);
-
--- Ledger: every stock change, never updated in place.
-CREATE TABLE IF NOT EXISTS stock_moves (
-  id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  item_id   TEXT NOT NULL REFERENCES inventory_items(id),
-  type      TEXT NOT NULL,                 -- sale void refund import adjust count issue return waste
-  qty_delta REAL NOT NULL,
-  qty_after REAL NOT NULL,
-  ref_type  TEXT,
-  ref_id    TEXT,
-  user_id   TEXT,
-  reason    TEXT NOT NULL DEFAULT '',
-  at        TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_moves_item ON stock_moves(item_id, at);
-CREATE INDEX IF NOT EXISTS idx_moves_at ON stock_moves(at);
-
--- Kitchen sessions (estimate stock: rice, vegetables, tea): what was issued to the kitchen at the
--- start of the day/shift, top-ups, what came back and what was wasted. Usage is NOT derived from sales.
-CREATE TABLE IF NOT EXISTS kitchen_sessions (
-  id         TEXT PRIMARY KEY,
-  status     TEXT NOT NULL CHECK (status IN ('open','closed')),
-  shift_id   TEXT,
-  opened_at  TEXT NOT NULL,
-  opened_by  TEXT,
-  closed_at  TEXT,
-  closed_by  TEXT,
-  note       TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS kitchen_lines (
-  session_id TEXT NOT NULL REFERENCES kitchen_sessions(id) ON DELETE CASCADE,
-  item_id    TEXT NOT NULL REFERENCES inventory_items(id),
-  issued     REAL NOT NULL DEFAULT 0,  -- at opening
-  added      REAL NOT NULL DEFAULT 0,  -- top-ups during the session
-  remaining  REAL,                     -- counted at closing, goes back to stock
-  waste      REAL,                     -- spoiled / lost, reported at closing
-  reason     TEXT NOT NULL DEFAULT '',
-  PRIMARY KEY (session_id, item_id)
-);
-
-CREATE TABLE IF NOT EXISTS stocktakes (
-  id         TEXT PRIMARY KEY,
-  shift_id   TEXT,
-  user_id    TEXT,
-  note       TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS stocktake_lines (
-  stocktake_id TEXT NOT NULL REFERENCES stocktakes(id) ON DELETE CASCADE,
-  item_id      TEXT NOT NULL REFERENCES inventory_items(id),
-  expected     REAL NOT NULL,
-  counted      REAL NOT NULL,
-  diff         REAL NOT NULL,
-  reason       TEXT NOT NULL DEFAULT '',
-  PRIMARY KEY (stocktake_id, item_id)
-);
-
-CREATE TABLE IF NOT EXISTS purchase_requests (
-  id          TEXT PRIMARY KEY,
-  supplier_id TEXT REFERENCES suppliers(id),
-  status      TEXT NOT NULL CHECK (status IN ('pending','approved','rejected','received')),
-  note        TEXT NOT NULL DEFAULT '',
-  created_by  TEXT,
-  decided_by  TEXT,
-  received_by TEXT,
-  created_at  TEXT NOT NULL,
-  decided_at  TEXT,
-  received_at TEXT,
-  decision_note TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS purchase_lines (
-  request_id   TEXT NOT NULL REFERENCES purchase_requests(id) ON DELETE CASCADE,
-  item_id      TEXT NOT NULL REFERENCES inventory_items(id),
-  qty          REAL NOT NULL CHECK (qty > 0),
-  unit_cost    INTEGER NOT NULL DEFAULT 0,
-  received_qty REAL,
-  PRIMARY KEY (request_id, item_id)
 );
 
 -- ---------- sales
@@ -294,7 +179,7 @@ CREATE TABLE IF NOT EXISTS devices (
 -- ---------- notifications
 CREATE TABLE IF NOT EXISTS notifications (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  type       TEXT NOT NULL,                  -- stock.low, stock.variance, shift.closed, purchase.pending, ...
+  type       TEXT NOT NULL,                  -- shift.closed, day.summary, order.refunded, order.voided
   title      TEXT NOT NULL,
   body       TEXT NOT NULL DEFAULT '',
   data       TEXT,
@@ -338,7 +223,7 @@ CREATE TABLE IF NOT EXISTS settings (
 const COLUMNS: [table: string, column: string, ddl: string][] = [
   ['products', 'image_url', 'TEXT'],
   ['products', 'category_id', 'TEXT REFERENCES categories(id)'],
-  ['products', 'cost', 'INTEGER'], // manual unit cost when the product has no recipe
+  ['products', 'cost', 'INTEGER'], // optional manual unit cost
   ['products', 'sort', 'INTEGER NOT NULL DEFAULT 0'],
   ['orders', 'order_type', "TEXT NOT NULL DEFAULT 'dine_in'"],
   ['orders', 'table_name', "TEXT NOT NULL DEFAULT ''"],
@@ -356,28 +241,16 @@ const COLUMNS: [table: string, column: string, ddl: string][] = [
   ['order_items', 'category', "TEXT NOT NULL DEFAULT ''"],
   ['order_items', 'unit_cost', 'INTEGER'],
   ['order_items', 'option_ids', "TEXT NOT NULL DEFAULT ''"], // comma-separated option ids
-  ['options', 'recipe_factor', 'REAL NOT NULL DEFAULT 1'], // e.g. size L = 1.4 x the base recipe
   ['products', 'grid_row', 'INTEGER'], // menu layout: row and column (0-4) inside its category
   ['products', 'grid_col', 'INTEGER'],
-  ['inventory_items', 'tracking', "TEXT NOT NULL DEFAULT 'exact'"], // exact = counted units, estimate = shown as "còn khoảng"
-  ['inventory_items', 'default_issue', 'REAL'], // usual amount issued to the kitchen at opening (e.g. rice 15 kg)
 ];
 
 function migrate(db: DB) {
-  // v2.0 created stock_moves with a CHECK on the move type; rebuild once without it.
-  const movesSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='stock_moves'").get()?.sql as string) ?? '';
-  if (movesSql.includes("CHECK (type IN")) {
-    db.exec('BEGIN');
-    db.exec('ALTER TABLE stock_moves RENAME TO stock_moves_old');
-    db.exec(`CREATE TABLE stock_moves (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL REFERENCES inventory_items(id), type TEXT NOT NULL,
-      qty_delta REAL NOT NULL, qty_after REAL NOT NULL, ref_type TEXT, ref_id TEXT, user_id TEXT, reason TEXT NOT NULL DEFAULT '', at TEXT NOT NULL)`);
-    db.exec('INSERT INTO stock_moves SELECT * FROM stock_moves_old');
-    db.exec('DROP TABLE stock_moves_old');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_moves_item ON stock_moves(item_id, at)');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_moves_at ON stock_moves(at)');
-    db.exec('COMMIT');
-  }
+  // The inventory module was removed (25/11/2026): drop its tables from older databases.
+  // Children first so foreign keys never block the drop.
+  for (const t of ['option_recipes', 'recipes', 'purchase_lines', 'purchase_requests', 'stocktake_lines', 'stocktakes',
+    'kitchen_lines', 'kitchen_sessions', 'stock_moves', 'inventory_items', 'suppliers']) db.exec(`DROP TABLE IF EXISTS ${t}`);
+  db.exec("DELETE FROM notification_prefs WHERE type LIKE 'stock.%' OR type LIKE 'purchase.%' OR type = 'kitchen.closed'");
   // v1 created `orders` with CHECK constraints that reject 'refunded' and 'qr'. Rebuild it once.
   const ordersSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='orders'").get()?.sql as string) ?? '';
   if (ordersSql.includes('CHECK (payment_method IN')) {
@@ -399,7 +272,7 @@ function migrate(db: DB) {
     if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_orders_shift ON orders(shift_id)');
-  // The stock-staff role was removed: those accounts become cashiers (cashiers now do all stock work).
+  // The stock-staff role was removed: those accounts become cashiers.
   db.exec("UPDATE users SET role = 'cashier' WHERE role = 'stock'");
   // QR payments are bank transfers: merge them so reports show one method.
   db.exec("UPDATE orders SET payment_method = 'transfer' WHERE payment_method = 'qr'");

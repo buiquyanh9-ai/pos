@@ -14,10 +14,6 @@ export interface Option {
   id: string;
   name: string;
   priceDelta: number;
-  /** Multiplies the product recipe (e.g. size L = 1.4). */
-  recipeFactor?: number;
-  /** Extra stock this option uses per portion (e.g. topping). */
-  recipe?: { itemId: string; qty: number }[];
 }
 
 export interface OptionGroup {
@@ -44,9 +40,8 @@ export interface Product {
   category: string;
   imageUrl: string | null;
   price: number;
+  /** Optional manual unit cost entered by the owner (null = unknown). */
   cost: number | null;
-  /** Portions that can still be made from stock (from the recipe). null = stock not tracked. */
-  stock: number | null;
   active: boolean;
   optionGroups: OptionGroup[];
   /** Menu grid position inside its category: 5 columns per row (null = auto-place). */
@@ -90,7 +85,7 @@ export interface OrderItem {
   note?: string;
   /** Human-readable chosen options, e.g. "L, Ít đá". */
   options?: string;
-  /** Chosen option ids: the server uses them for recipe scaling and topping stock. */
+  /** Chosen option ids (kept on the order line). */
   optionIds?: string[];
 }
 
@@ -135,142 +130,6 @@ export interface Shift {
   expectedCash: number | null;
   cashDifference: number | null;
   note: string;
-}
-
-export interface InventoryItem {
-  id: string;
-  name: string;
-  unit: string;
-  kind: 'ingredient' | 'goods';
-  /** exact = counted units (meat portions, bottles); estimate = "còn khoảng" (rice, vegetables, tea, boxes). */
-  tracking: 'exact' | 'estimate';
-  /** Usual amount issued to the kitchen at the start of a shift (estimate items). */
-  defaultIssue: number | null;
-  qty: number;
-  minQty: number;
-  unitCost: number;
-  supplierId: string | null;
-  active: boolean;
-  low: boolean;
-  updatedAt: string;
-}
-
-export type MoveType = 'sale' | 'void' | 'refund' | 'import' | 'adjust' | 'count' | 'issue' | 'return' | 'waste';
-export const MOVE_TYPE_LABEL: Record<MoveType, string> = {
-  sale: 'Bán hàng',
-  void: 'Huỷ đơn',
-  refund: 'Hoàn tiền',
-  import: 'Nhập hàng',
-  adjust: 'Điều chỉnh',
-  count: 'Kiểm kê',
-  issue: 'Xuất bếp',
-  return: 'Bếp trả lại',
-  waste: 'Hao hụt',
-};
-
-export interface KitchenLine {
-  itemId: string;
-  name: string;
-  unit: string;
-  issued: number;
-  added: number;
-  remaining: number | null;
-  waste: number | null;
-  /** issued + added - remaining - waste, once closed. */
-  used: number | null;
-  reason: string;
-}
-
-export interface KitchenSession {
-  id: string;
-  status: 'open' | 'closed';
-  shiftId: string | null;
-  openedAt: string;
-  openedBy: string | null;
-  closedAt: string | null;
-  closedBy: string | null;
-  note: string;
-  lines: KitchenLine[];
-}
-
-export interface StockMove {
-  id: number;
-  itemId: string;
-  itemName?: string;
-  unit?: string;
-  type: MoveType;
-  qtyDelta: number;
-  qtyAfter: number;
-  refType: string | null;
-  refId: string | null;
-  userName: string | null;
-  reason: string;
-  at: string;
-}
-
-export interface StocktakeLine {
-  itemId: string;
-  name: string;
-  unit: string;
-  expected: number;
-  counted: number;
-  diff: number;
-  diffValue: number;
-  reason: string;
-}
-
-export interface Stocktake {
-  id: string;
-  shiftId: string | null;
-  userName: string | null;
-  note: string;
-  createdAt: string;
-  lines: StocktakeLine[];
-  varianceCount: number;
-  varianceValue: number;
-}
-
-export interface Supplier {
-  id: string;
-  name: string;
-  phone: string;
-  note: string;
-}
-
-export type PurchaseStatus = 'pending' | 'approved' | 'rejected' | 'received';
-export const PURCHASE_STATUS_LABEL: Record<PurchaseStatus, string> = {
-  pending: 'Chờ duyệt',
-  approved: 'Đã duyệt',
-  rejected: 'Từ chối',
-  received: 'Đã nhập kho',
-};
-
-export interface PurchaseLine {
-  itemId: string;
-  name: string;
-  unit: string;
-  qty: number;
-  unitCost: number;
-  receivedQty: number | null;
-  currentStock: number;
-  minQty: number;
-}
-
-export interface Purchase {
-  id: string;
-  status: PurchaseStatus;
-  supplierId: string | null;
-  supplierName: string | null;
-  note: string;
-  decisionNote: string;
-  createdBy: string | null;
-  decidedBy: string | null;
-  receivedBy: string | null;
-  createdAt: string;
-  decidedAt: string | null;
-  receivedAt: string | null;
-  lines: PurchaseLine[];
-  totalCost: number;
 }
 
 export interface Bucket {
@@ -326,5 +185,4 @@ export interface OpenOrder<C = unknown> {
 export interface ShiftReport {
   shift: Shift;
   summary: Summary;
-  stocktakes: { id: string; createdAt: string }[];
 }

@@ -1,5 +1,5 @@
 // Import the menu from the shop's description file:
-//   npm run import-menu -w apps/server [-- path/to/z.product] [--sample-stock]
+//   npm run import-menu -w apps/server [-- path/to/z.product]
 import { readFileSync } from 'node:fs';
 import { openDb } from './db.ts';
 import { defaultMenuPath } from './menuWatch.ts';
@@ -19,5 +19,5 @@ for (const c of parsed.categories) {
 }
 parsed.warnings.forEach((w) => console.warn('! ' + w));
 const db = openDb(process.env.DB_PATH ?? './data/shopflow.db');
-const r = importMenu(db, md, { force: true, sampleStock: args.includes('--sample-stock') });
+const r = importMenu(db, md, { force: true });
 console.log(`\nĐã nhập ${r.products} món, ${r.categories} danh mục; ẩn ${r.deactivated} món không còn trong file.`);
