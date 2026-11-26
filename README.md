@@ -327,16 +327,19 @@ Bộ kiểm thử gồm 51 ca, chạy trên cơ sở dữ liệu tạm trong b�
 
 Đã chạy thực tế:
 
-- POS bản APK trên **máy POS SUNMI T1-G** với máy in nhiệt rời cắm USB và két tiền: bán hàng, in hoá đơn, mở két khi thanh toán tiền mặt.
-- Máy chủ trên VPS, truy cập qua HTTPS: POS tại quầy và Boss trên điện thoại qua 4G đồng bộ trong khoảng một giây, máy tính trong quán tắt.
-- Mất Wi-Fi/LAN trên máy POS vẫn bán, in và mở két; có mạng lại thì đơn tự đồng bộ trong khoảng 10 giây. Đơn trong giỏ vẫn còn sau khi tắt hẳn ứng dụng và mở lại.
-- POS và Boss bản APK trên máy ảo Android 15.
+- **POS bản APK trên máy POS SUNMI T1-G** (Android 6.0.1, WebView Chrome 69), cài qua Bluetooth. Máy in nhiệt rời RICHTA RI-58A (khổ 58 mm) cắm USB, két tiền cắm vào máy in. Đã bán hàng, in hoá đơn tiền mặt và chuyển khoản, mở két khi thanh toán tiền mặt có tiền thối, in phiếu tổng kết ca.
+- **Boss trên iPhone** (Safari, thêm vào màn hình chính) và điện thoại qua 4G: doanh thu nhảy gần như ngay khi POS thanh toán; đo được khoảng 0,4–0,7 giây từ lúc bấm thanh toán tới khi điện thoại nhận sự kiện.
+- **Máy chủ trên VPS** qua Cloudflare Tunnel (HTTPS): POS và Boss chạy khi máy tính trong quán đã tắt; mỗi trang tải khoảng 0,2 giây.
+- **Mất mạng:** rút LAN/tắt Wi-Fi trên máy POS vẫn bán, in và mở két; có mạng lại thì đơn tự đồng bộ trong khoảng 10 giây. Đơn trong giỏ vẫn còn sau khi tắt hẳn ứng dụng và mở lại.
+- POS và Boss bản APK trên máy ảo Android 15, kèm máy in ESC/POS ảo.
+
+Các lỗi chỉ phát hiện được trên thiết bị thật đã được xử lý: Android 6 không tin chứng chỉ Let's Encrypt (APK kèm chứng chỉ gốc ISRG Root X1), WebView đời cũ thiếu một số tính năng CSS/JS (build cho Chrome 69), máy in in mũi tên thành ký tự lạ (đổi ký hiệu sang ASCII khi in), Boss chạy nền làm kết nối trực tiếp bị treo (tự nối lại và tải lại số liệu), tiêu đề POS bị thanh trình duyệt Safari che.
 
 Giới hạn hiện tại và hướng phát triển:
 
 - **Thông báo đẩy khi app Boss đang đóng (FCM):** phần gửi phía máy chủ đã viết, nhưng chưa thử với một project Firebase thật. Khi Boss đang mở hoặc chạy nền, thông báo vẫn đến ngay qua SSE.
 - **Cơ sở dữ liệu:** đang dùng SQLite, đủ cho quy mô một cửa hàng; đường chuyển sang PostgreSQL đã mô tả trong [docs/DEPLOY.md](docs/DEPLOY.md).
-- **Boss trên iPhone** dùng dạng web app; chưa build bản iOS gốc qua App Store.
+- **Boss trên iPhone** chạy dạng web app (đầy đủ chức năng); chưa build bản iOS gốc để đưa lên App Store.
 - Theo yêu cầu của cửa hàng, phiên bản này **không có module kho và không tính giá vốn/lợi nhuận**, chỉ theo dõi doanh thu.
 
 ## 16. Tài liệu chi tiết

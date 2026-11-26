@@ -1,81 +1,87 @@
-# Android APK: build, install, test
+# Android APK: build, cài đặt, kiểm thử
 
-> This guide uses the POS app (`apps/pos`). The Boss app (`apps/boss`, id `vn.shopflow.boss`) builds the same way: replace `apps/pos` with `apps/boss` and `-w apps/pos` with `-w apps/boss`. Install Boss on the owner's phone instead of the POS terminal.
+> Hướng dẫn này dùng ứng dụng POS (`apps/pos`). Ứng dụng Boss (`apps/boss`, mã `vn.shopflow.boss`) build theo cùng cách: thay `apps/pos` bằng `apps/boss` và `-w apps/pos` bằng `-w apps/boss`. Boss cài lên điện thoại của chủ thay vì máy POS.
 
-The POS web app (`apps/pos`) runs inside a Capacitor WebView. The native project lives in `apps/pos/android`. The same frontend code runs in the browser on Windows and in the APK, with nothing duplicated.
+Ứng dụng web POS (`apps/pos`) chạy bên trong WebView của Capacitor. Project Android nằm ở `apps/pos/android`. Cùng một mã nguồn giao diện chạy trên trình duyệt Windows và trong APK, không có phần nào phải viết hai lần.
 
-> You do not need a POS terminal to develop. Use the browser on Windows or an Android emulator. A physical device is only needed for the final hardware tests.
+> Không cần máy POS để phát triển. Dùng trình duyệt trên Windows hoặc máy ảo Android. Máy thật chỉ cần cho bước kiểm thử phần cứng cuối cùng.
 
-## 1. One-time setup (Windows)
+Yêu cầu thiết bị: **Android 6.0 trở lên** (minSdk 23). Mã nguồn được build cho WebView đời cũ (Chrome 69 trở lên), nên chạy được trên máy POS chưa cập nhật WebView.
 
-1. Install **Android Studio** (it bundles a JDK 21 and the Android SDK).
-2. In Android Studio, open *SDK Manager* and install **Android SDK Platform 35** and **Android SDK Platform-Tools**. Platform-Tools provides `adb`.
-3. Set the environment variables (PowerShell, then reopen the terminal):
+## 1. Cài đặt một lần (Windows)
+
+1. Cài **Android Studio** (đã kèm JDK 21 và Android SDK).
+2. Trong Android Studio, mở *SDK Manager* và cài **Android SDK Platform 35** cùng **Android SDK Platform-Tools**. Platform-Tools cung cấp lệnh `adb`.
+3. Đặt biến môi trường (chạy trong PowerShell, rồi mở lại cửa sổ dòng lệnh):
    ```powershell
    setx ANDROID_HOME "$env:LOCALAPPDATA\Android\Sdk"
    setx JAVA_HOME "C:\Program Files\Android\Android Studio\jbr"
    setx PATH "$env:PATH;$env:LOCALAPPDATA\Android\Sdk\platform-tools"
    ```
-4. Check: `adb version` and `java -version` (should print 21.x).
+4. Kiểm tra: `adb version` và `java -version` (phải in ra 21.x).
 
-## 2. Build a debug APK
+## 2. Build APK bản debug
 
-From the repo root:
+Tại thư mục gốc của mã nguồn:
 
 ```powershell
 npm install
 npm run android:apk -w apps/pos
 ```
 
-This builds the web app, copies it into the Android project (`cap sync`) and runs Gradle `assembleDebug`.
-Output: `apps/pos/android/app/build/outputs/apk/debug/app-debug.apk`
+Lệnh này build ứng dụng web, chép vào project Android (`cap sync`) rồi chạy Gradle `assembleDebug`.
+Kết quả: `apps/pos/android/app/build/outputs/apk/debug/app-debug.apk`
 
-To work in Android Studio instead: `npm run android:sync -w apps/pos`, then `npm run android:open -w apps/pos`, then *Run*.
+Muốn làm trong Android Studio: chạy `npm run android:sync -w apps/pos`, rồi `npm run android:open -w apps/pos`, sau đó bấm *Run*.
 
-**Release APK.** Create a keystore and configure signing in `android/app/build.gradle`, then run `gradlew.bat assembleRelease`. Never commit the keystore; `*.keystore` is in `.gitignore`.
+**APK bản phát hành.** Tạo keystore và cấu hình ký trong `android/app/build.gradle`, rồi chạy `gradlew.bat assembleRelease`. Không bao giờ commit keystore; `*.keystore` đã có trong `.gitignore`.
 
-## 3. Install on the device
+## 3. Cài lên thiết bị
 
-**ADB (recommended)**
-1. On the device, open *Settings → About* and tap *Build number* 7 times to unlock developer options. Then go to *Developer options* and turn on **USB debugging**.
-2. Connect USB and accept the RSA prompt on the device. Check with `adb devices`.
-3. Install with `adb install -r apps\pos\android\app\build\outputs\apk\debug\app-debug.apk`
+**Qua ADB (khuyến nghị khi phát triển)**
+1. Trên thiết bị, mở *Cài đặt → Giới thiệu* và bấm *Số hiệu bản dựng* 7 lần để mở tuỳ chọn nhà phát triển. Sau đó vào *Tuỳ chọn nhà phát triển* và bật **Gỡ lỗi USB**.
+2. Cắm cáp USB và chấp nhận hộp thoại RSA trên thiết bị. Kiểm tra bằng `adb devices`.
+3. Cài: `adb install -r apps\pos\android\app\build\outputs\apk\debug\app-debug.apk`
 
-Over Wi-Fi (Android 11+): on the device, open *Developer options → Wireless debugging*. Then run `adb pair <ip>:<pair-port>` followed by `adb connect <ip>:<port>`.
+Qua Wi-Fi (Android 11 trở lên): trên thiết bị, mở *Tuỳ chọn nhà phát triển → Gỡ lỗi không dây*. Sau đó chạy `adb pair <ip>:<cổng-ghép>` rồi `adb connect <ip>:<cổng>`.
 
-**Manual install.** Copy the APK to the device (USB storage, cloud drive or LAN share). Open it and allow *Install unknown apps* for the file manager.
+**Cài thủ công.** Chép APK vào thiết bị (USB, Bluetooth, ổ đám mây, thư mục chia sẻ trong mạng LAN, hoặc đặt file lên máy chủ rồi tải bằng trình duyệt). Mở file và cho phép *Cài ứng dụng không rõ nguồn gốc*. Google Play Protect có thể hỏi xác nhận vì APK không qua cửa hàng; chọn cài tiếp.
 
-> ⚠️ **Not every POS terminal allows this.** Some vendors (certain bank or payment-provider terminals, locked SUNMI or PAX images) block sideloading or only accept apps through their own app store or MDM, which may require vendor signing. Check with the vendor before you buy or deploy. If sideloading is blocked, the fallback is to open the POS in the device's browser: `http://<server-ip>:5173` in dev or a hosted build.
+> ⚠️ **Không phải máy POS nào cũng cho cài APK ngoài.** Một số hãng (máy của ngân hàng hoặc nhà cung cấp thanh toán, bản SUNMI hay PAX bị khoá) chặn cài ngoài, hoặc chỉ nhận ứng dụng qua cửa hàng riêng hay hệ thống MDM, có thể cần chữ ký của hãng. Hãy hỏi nhà cung cấp trước khi mua hoặc triển khai. Nếu bị chặn, phương án thay thế là mở POS bằng trình duyệt của thiết bị tại địa chỉ máy chủ (ví dụ `https://<tên-miền>/pos/`), khi đó in và mở két sẽ bị hạn chế.
 
-## 4. Connect to the backend
+## 4. Kết nối với máy chủ
 
-1. Run the backend on a PC or server reachable from the device: `npm start -w apps/server`. It listens on `0.0.0.0:4000` and prints its LAN IPs.
-2. In the app, open **Cài đặt (Settings) → Địa chỉ backend (Backend URL)** and enter e.g. `192.168.1.10:4000`, plus the API key if one is set. Tap **Kiểm tra kết nối** (Test connection), then **Lưu cài đặt** (Save settings).
-3. Over the Internet, use HTTPS (reverse proxy such as Caddy or Nginx in front of the server) and always set `SHOPFLOW_API_KEY`.
+1. Chạy máy chủ trên máy tính hoặc server mà thiết bị truy cập được: `npm start -w apps/server`. Máy chủ lắng nghe ở `0.0.0.0:4000` và in ra các IP trong mạng LAN.
+2. Trong ứng dụng, mở **Cài đặt → Địa chỉ backend** và nhập ví dụ `192.168.1.10:4000` (hoặc `https://<tên-miền>`), kèm API key nếu có đặt. Bấm **Kiểm tra kết nối**, rồi **Lưu cài đặt**.
+3. Khi đi qua Internet, dùng HTTPS (reverse proxy như Caddy hoặc Nginx, hoặc Cloudflare Tunnel đặt trước máy chủ).
 
-Plain-HTTP LAN backends work because the app is served from `http://localhost` (`server.androidScheme: 'http'`) and the manifest sets `android:usesCleartextTraffic="true"`. If you deploy only over HTTPS, remove both for tighter security.
+Máy chủ HTTP thường trong mạng LAN vẫn dùng được, vì ứng dụng được phục vụ từ `http://localhost` (`server.androidScheme: 'http'`) và manifest đặt `android:usesCleartextTraffic="true"`. Nếu chỉ triển khai qua HTTPS, có thể bỏ cả hai để an toàn hơn.
 
-## 5. Test checklist on a real terminal
+**Android 6 và chứng chỉ Let's Encrypt.** Android 6 không tin chứng chỉ gốc ISRG Root X1 (Let's Encrypt, cũng là chứng chỉ Cloudflare cấp miễn phí). APK POS có kèm chứng chỉ gốc này (`res/raw/isrg_root_x1.pem`). Khi WebView báo chứng chỉ không đáng tin, ứng dụng kiểm tra lại bằng kho chứng chỉ hệ thống cộng ISRG Root X1, có kiểm tra tên miền, và chỉ cho đi tiếp khi chứng chỉ hợp lệ.
 
-- [ ] App installs and launches. Layout fits the screen in landscape and portrait (if the device rotates).
-- [ ] Settings: test connection succeeds and products load.
-- [ ] Sale with cash, card and transfer. The order appears as *Đã đồng bộ* (Synced).
-- [ ] Turn off Wi-Fi, make 2 sales. They show as *Chờ gửi* (Pending). Turn Wi-Fi back on: they upload within about 15 s with no duplicates.
-- [ ] Barcode: a built-in or USB scanner in keyboard mode adds products (driver *keyboard wedge*).
-- [ ] Printer: test print with the available driver (network ESC/POS or SUNMI, see `docs/SUNMI.md`).
-- [ ] Cash drawer opens after a cash sale (if connected through the printer).
-- [ ] App survives being killed and restarted. Pending orders are still there.
+## 5. Danh sách kiểm tra trên máy POS thật
 
-## 6. Debugging
+- [ ] Ứng dụng cài và mở được. Bố cục vừa màn hình ở chế độ ngang và dọc (nếu thiết bị xoay được).
+- [ ] Cài đặt: kiểm tra kết nối thành công và tải được danh sách món.
+- [ ] Bán hàng bằng tiền mặt và chuyển khoản. Đơn hiện trạng thái *Đã đồng bộ*.
+- [ ] Tắt Wi-Fi/rút dây mạng, bán 2 đơn. Đơn hiện *Chờ gửi*. Bật mạng lại: đơn được gửi lên trong khoảng 15 giây, không trùng.
+- [ ] Mã vạch: máy quét tích hợp hoặc máy quét USB ở chế độ bàn phím thêm được món (driver *keyboard wedge*).
+- [ ] Máy in: in thử bằng driver phù hợp (ESC/POS USB, ESC/POS qua mạng hoặc SUNMI, xem `docs/SUNMI.md`). Kiểm tra chữ tiếng Việt và cắt giấy.
+- [ ] Két tiền mở sau khi thanh toán tiền mặt (nếu két cắm vào máy in).
+- [ ] Tắt hẳn ứng dụng rồi mở lại: đơn đang chờ gửi và giỏ hàng vẫn còn.
 
-- WebView console: in desktop Chrome, open `chrome://inspect`, then inspect the app (debug builds only).
-- Logs: `adb logcat | findstr Capacitor`
+## 6. Gỡ lỗi
 
-## Common Android POS resolutions
+- Console của WebView: trên Chrome máy tính, mở `chrome://inspect`, rồi chọn *inspect* ứng dụng (chỉ với bản debug).
+- Log: `adb logcat | findstr Capacitor`
+- Trang **Cài đặt → Phần cứng** của POS liệt kê các thiết bị USB đang cắm kèm VID:PID, giúp xác định máy in.
+- Máy in nhiệt in ra toàn số hex nghĩa là máy đang ở chế độ HEX DUMP (bị bật khi giữ nút FEED lúc mở nguồn). Tắt máy in rồi bật lại, không bấm nút nào.
 
-| Device class | Resolution | Layout used |
+## Độ phân giải thường gặp của máy POS Android
+
+| Loại thiết bị | Độ phân giải | Bố cục |
 |---|---|---|
-| Desktop terminal 15.6" (e.g. SUNMI T2/D2s) | 1920×1080 | two columns |
-| Desktop terminal 10–11" | 1280×800 | two columns |
-| Small terminal 7–8" | 1024×600 | compact two columns |
-| Handheld (e.g. SUNMI V2/P2) | 720×1440 portrait | cart as bottom sheet |
+| Máy để bàn 15,6" (ví dụ SUNMI T2/D2s) | 1920×1080 | hai cột |
+| Máy để bàn 10–11" | 1280×800 | hai cột |
+| Máy nhỏ 7–8" | 1024×600 | hai cột thu gọn |
+| Máy cầm tay (ví dụ SUNMI V2/P2) | 720×1440 dọc | giỏ hàng dạng ngăn kéo dưới |

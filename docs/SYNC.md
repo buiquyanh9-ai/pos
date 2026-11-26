@@ -1,97 +1,92 @@
-# ShopFlow API v2: contract between POS, Boss and the backend
+# ShopFlow API v2: hợp đồng giữa POS, Boss và máy chủ
 
-All endpoints are under `/api`.
-- **Money** is in integer VND. **Timestamps** are ISO-8601 UTC.
-- Reports bucket by shop-local time; the `tz` parameter is an offset in minutes, default `420` (UTC+7).
+Mọi endpoint nằm dưới `/api`.
+- **Tiền** là số nguyên, đơn vị VNĐ. **Thời gian** theo ISO-8601 UTC.
+- Báo cáo chia nhóm theo giờ địa phương của quán; tham số `tz` là độ lệch tính bằng phút, mặc định `420` (UTC+7).
 
-## Authentication & roles
+## Xác thực và vai trò
 
 - `POST /auth/login`:
-  - Boss sends `{ username, password }`; POS sends `{ username, pin }`.
-  - Response: `{ token, expiresAt, user }`. Sessions last 30 days, so a POS terminal stays logged in through offline periods.
-- Send `Authorization: Bearer <token>`. `GET /api/events` also accepts `?token=`, because EventSource cannot set headers.
-- After 5 wrong passwords/PINs for a username (or from one address) within 5 minutes, login returns 429 until the window ends.
-- `GET /auth/staff` is public and lists staff names for the POS PIN screen. It returns no secrets.
-- Optional `x-api-key: <SHOPFLOW_API_KEY>` acts as the owner, for integrations and scripts.
+  - Boss gửi `{ username, password }`; POS gửi `{ username, pin }`.
+  - Trả về: `{ token, expiresAt, user }`. Phiên đăng nhập kéo dài 30 ngày, để máy POS vẫn đăng nhập trong lúc mất mạng.
+- Gửi kèm `Authorization: Bearer <token>`. `GET /api/events` nhận thêm `?token=`, vì EventSource không đặt được header.
+- Sau 5 lần sai mật khẩu/PIN với một tài khoản (hoặc từ một địa chỉ) trong 5 phút, đăng nhập trả về 429 cho tới hết khoảng thời gian đó.
+- `GET /auth/staff` công khai, liệt kê tên nhân viên cho màn hình nhập PIN của POS. Không trả về thông tin bí mật.
+- Header tuỳ chọn `x-api-key: <SHOPFLOW_API_KEY>` có quyền như chủ, dùng cho tích hợp và script.
 
-| Role | Can do |
+| Vai trò | Quyền |
 |---|---|
-| `owner` | Everything. Store-wide reports, staff (`/users`), menu, approvals, audit log |
-| `cashier` | Sell, void/refund (reason required), open/close own shift, shift report (`/reports/summary?shiftId=`) |
+| `owner` (chủ) | Toàn quyền: báo cáo toàn cửa hàng, nhân viên (`/users`), thực đơn, lịch sử thao tác |
+| `cashier` (thu ngân) | Bán hàng, huỷ/hoàn tiền (bắt buộc lý do), mở/đóng ca của mình, báo cáo ca (`/reports/summary?shiftId=`) |
 
-## Endpoints
+## Các endpoint
 
-### Auth & staff
+### Đăng nhập và nhân viên
 
 `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · `GET /auth/staff`
 
-Owner only: `GET/POST/PUT /users` · `GET /audit`
+Chỉ chủ: `GET/POST/PUT /users` · `GET /audit`
 
-### Menu
+### Thực đơn
 
-| Endpoint | Notes |
+| Endpoint | Ghi chú |
 |---|---|
-| `GET /products` | `{ products, categories, optionGroups, serverTime }`. See *Product fields* below |
-| `POST/PUT/DELETE /products/:id` | Owner. `cost?` (optional manual unit cost), `optionGroupIds: [...]`. Delete is a soft delete |
-| `GET/POST/PUT /categories` | Owner for writes |
-| `GET/POST/PUT /option-groups` | Size / ice / sugar / topping. `options: [{name, priceDelta}]`, `multi`, `required` |
-| `GET/POST/PUT /tables` | Tables, with areas |
+| `GET /products` | `{ products, categories, optionGroups, serverTime }` |
+| `POST/PUT/DELETE /products/:id` | Chỉ chủ. `optionGroupIds: [...]`. Xoá là xoá mềm |
+| `GET/POST/PUT /categories` | Ghi: chỉ chủ |
+| `GET/POST/PUT /option-groups` | Size / đá / đường / topping. `options: [{name, priceDelta}]`, `multi`, `required` |
+| `GET/POST/PUT /tables` | Bàn, kèm khu vực |
 
-*Product fields:*
-- `cost` is the optional manual unit cost (`null` when not entered).
+Sản phẩm còn trường `cost` (giá vốn nhập tay, tuỳ chọn, `null` khi chưa nhập). Giao diện POS và Boss không dùng trường này vì cửa hàng chỉ theo dõi doanh thu.
 
-### Sales
+### Bán hàng
 
-| Endpoint | Notes |
+| Endpoint | Ghi chú |
 |---|---|
-| `POST /orders` | Idempotent by `id` (see *Order upload*) |
-| `GET /orders?from&to&status&shiftId&orderType&cashierId&deviceId` | |
-| `POST /orders/:id/void` `{reason}` | Cancels a mistaken order. Excluded from revenue |
-| `POST /orders/:id/refund` `{reason, shiftId?}` | Gives the money back; counted against revenue at refund time |
-| `POST /shifts/open` `{deviceId, openingCash}` · `GET /shifts/current?deviceId` | One open shift per device |
-| `POST /shifts/:id/close` `{countedCash, note}` | Returns the shift report: `expectedCash`, `cashDifference`, summary |
+| `POST /orders` | Không trùng theo `id` (xem *Gửi đơn*) |
+| `GET /orders?from&to&status&shiftId&orderType&cashierId&deviceId&paymentMethod` | |
+| `POST /orders/:id/void` `{reason}` | Huỷ đơn bấm nhầm. Không tính vào doanh thu |
+| `POST /orders/:id/refund` `{reason, shiftId?}` | Trả lại tiền; trừ vào doanh thu tại thời điểm hoàn tiền |
+| `POST /shifts/open` `{deviceId, openingCash}` · `GET /shifts/current?deviceId` | Mỗi người một ca đang mở trên một máy |
+| `POST /shifts/:id/close` `{countedCash, note}` | Trả về báo cáo ca: `expectedCash`, `cashDifference`, tổng hợp |
 | `GET /shifts?from&to` · `GET /shifts/:id/report` | |
 
-*Order upload (`POST /orders`):*
-- The server recomputes subtotal, total and change, and validates them.
-- Rules: `paid >= total`; only cash payments can have change; `discount <= subtotal`.
-- Payment methods: `cash | transfer | qr | card`. Order types: `dine_in | takeaway | delivery`.
-- Each item is `{productId, name, price (incl. options), qty, note?, options?, optionIds?}`.
-- `optionIds` are stored on the order line with the readable `options` text; unknown ids are dropped.
+*Gửi đơn (`POST /orders`):*
+- Máy chủ tính lại tạm tính, tổng tiền và tiền thối, rồi kiểm tra.
+- Quy tắc: `paid >= total`; chỉ thanh toán tiền mặt mới có tiền thối; `discount <= subtotal`.
+- Phương thức thanh toán: `cash | transfer | card`. Máy cũ gửi `qr` được ghi nhận là `transfer`. Loại đơn: `dine_in | takeaway | delivery`.
+- Mỗi dòng món là `{productId, name, price (đã gồm tuỳ chọn), qty, note?, options?, optionIds?}`.
+- `optionIds` được lưu trên dòng món cùng chuỗi `options` dễ đọc; id không tồn tại bị bỏ qua.
 
-### Inventory
+### Kho
 
-The inventory module (stock, recipes/BOM, stock counts, kitchen, suppliers, purchasing) was removed on 25/11/2026 at the shop's request. Older databases drop those tables on startup.
+Module kho (tồn kho, công thức/BOM, kiểm kê, bếp, nhà cung cấp, nhập hàng) đã được gỡ ngày 25/11/2026 theo yêu cầu của cửa hàng. Cơ sở dữ liệu cũ sẽ tự xoá các bảng này khi khởi động.
 
-### Reports, live data, notifications
+### Báo cáo, dữ liệu trực tiếp, thông báo
 
-| Endpoint | Notes |
+| Endpoint | Ghi chú |
 |---|---|
-| `GET /reports/summary?from&to[&compare=1&shiftId&cashierId&deviceId&tz]` | Any range up to the minute, max 400 days. Owner, or a cashier with `shiftId`. See *Summary fields* |
-| `GET /dashboard` | Today so far, compared with yesterday up to the same time. Also open shifts and open bills |
-| `GET /activity?before=` | Latest orders and open shifts, for the Boss live feed |
-| `GET /events` | SSE events: `order.created`, `order.updated`, `shift.updated`, `catalog.changed`, `open_orders.changed`, `notification` |
+| `GET /reports/summary?from&to[&compare=1&shiftId&cashierId&deviceId&tz]` | Khoảng thời gian bất kỳ, chính xác tới phút, tối đa 400 ngày. Chủ, hoặc thu ngân kèm `shiftId`. Xem *Các trường tổng hợp* |
+| `GET /dashboard` | Hôm nay tính tới hiện tại, so với hôm qua cùng giờ. Kèm các ca và hoá đơn đang mở |
+| `GET /activity?before=` | Đơn mới nhất và ca đang mở, cho luồng hoạt động của Boss |
+| `GET /events` | Sự kiện SSE: `order.created`, `order.updated`, `shift.updated`, `catalog.changed`, `open_orders.changed`, `notification`, `ping` |
 | `GET /notifications` · `POST /notifications/read {ids \| "all"}` | |
-| `GET/PUT /notifications/prefs` | Per-user on/off per notification type |
-| `POST /notifications/push-tokens {token, platform}` | FCM device token from the phone app |
-| `GET/PUT/DELETE /open-orders/:id` | Unpaid table bills. `PUT` with `version` for optimistic locking (409 if another terminal changed it), one open bill per table. `DELETE` with `{reason}` = cancelled (audited) |
-| `GET /sync/changes?since=<cursor>` | Cursor-based change feed of products and orders, for incremental sync |
+| `GET/PUT /notifications/prefs` | Bật/tắt từng loại thông báo cho từng người |
+| `POST /notifications/push-tokens {token, platform}` | Token FCM của điện thoại |
+| `GET/PUT/DELETE /open-orders/:id` | Hoá đơn bàn chưa thanh toán. `PUT` kèm `version` để khoá lạc quan (409 nếu máy khác đã sửa), mỗi bàn một hoá đơn mở. `DELETE` kèm `{reason}` = huỷ (có ghi lịch sử) |
+| `GET /sync/changes?since=<cursor>` | Luồng thay đổi theo con trỏ của sản phẩm và đơn hàng, để đồng bộ từng phần |
 
-*Summary fields (`/reports/summary`):* `orderCount`, `itemsSold`, `grossSales`, `discounts`, `refunds`, `netRevenue`, `avgOrderValue`, `voidedCount`/`voidedAmount`, `costOfGoods`, `grossProfit`, `costCoverage`, `byHour[24]`, `byDay`, `byPayment`, `byOrderType`, `byCashier`, `byCategory`, `topProducts`, plus `previous`/`change` when `compare=1`.
+*Các trường tổng hợp (`/reports/summary`):* `orderCount`, `itemsSold`, `grossSales`, `discounts`, `refunds`, `netRevenue`, `avgOrderValue`, `voidedCount`/`voidedAmount`, `byHour[24]` (kèm `byMethod` tách tiền mặt và chuyển khoản), `byDay`, `byPayment`, `byOrderType`, `byCashier`, `byCategory`, `topProducts`, cùng `previous`/`change` khi `compare=1`. Máy chủ vẫn trả `costOfGoods`, `grossProfit`, `costCoverage` nhưng giao diện không hiển thị.
 
-*Notification types:* `shift.closed`, `day.summary`, `order.voided`, `order.refunded`.
+*Các loại thông báo:* `shift.closed`, `day.summary`, `order.voided`, `order.refunded`.
 
-## Business rules
+## Quy tắc nghiệp vụ
 
-- **No duplicate orders.** The order and its lines are written in one `BEGIN IMMEDIATE` transaction, and the order id is checked again inside the lock. Two concurrent uploads of the same order produce one 201 and one 200 `duplicate: true` (covered by a test).
-- **Revenue:**
-  - Sales count at **sale time**.
-  - Refunds count at **refund time**, so they reduce the day or shift in which the money left the drawer.
-  - Voided orders are never revenue; they are reported separately.
-  - Net = sales total after discount − refunds.
-- **Profit:**
-  - Each order line stores its unit cost at sale time, taken from the product's manual cost (null when unknown).
-  - `grossProfit` = net − cost of goods.
-  - `costCoverage` < 1 means some sales have no known cost, and profit is an estimate over the covered part.
-- **Expected cash for a shift** = opening cash + cash sales in the shift − cash refunds made in the shift.
-- **Audit.** Logins, user changes, menu changes, voids/refunds and cash in/out are written to `audit_log`.
+- **Không trùng đơn.** Đơn và các dòng món được ghi trong một transaction `BEGIN IMMEDIATE`, và mã đơn được kiểm tra lại bên trong khoá. Hai lần gửi đồng thời cùng một đơn cho ra một phản hồi 201 và một phản hồi 200 `duplicate: true` (có test kiểm tra).
+- **Doanh thu:**
+  - Đơn bán tính tại **thời điểm bán**.
+  - Hoàn tiền tính tại **thời điểm hoàn tiền**, nên trừ vào ngày hoặc ca mà tiền thực sự ra khỏi két.
+  - Đơn huỷ không bao giờ tính là doanh thu; được thống kê riêng.
+  - Doanh thu thuần = tổng tiền bán sau chiết khấu − hoàn tiền.
+- **Tiền dự kiến trong két của một ca** = tiền đầu ca + tiền mặt bán trong ca + tiền thu thêm − tiền chi ra − tiền mặt hoàn trong ca.
+- **Lịch sử thao tác.** Đăng nhập, sửa nhân viên, sửa thực đơn, huỷ/hoàn tiền và thu/chi két đều được ghi vào `audit_log`.
