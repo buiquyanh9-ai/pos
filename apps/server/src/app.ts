@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import type { DB } from './db.ts';
 import { logChange, now, tx } from './db.ts';
 import { PRODUCT_IMAGE_GROUPS, productImagePath } from './productImages.ts';
+import { productDir } from './menuWatch.ts';
 import { authenticate, safeEqual } from './auth.ts';
 import { HttpError } from './validate.ts';
 import { hardwareRouter } from './hardwareRoutes.ts';
@@ -76,7 +77,7 @@ export function createApp({ db, apiKey }: AppOptions) {
 
   // Public labeled photos, plus legacy flat URLs for existing clients.
   const imgDirs = [
-    process.env.MENU_IMG_DIR ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'product', 'product_img'),
+    process.env.MENU_IMG_DIR ?? join(productDir(), 'product_img'),
     join(dirname(fileURLToPath(import.meta.url)), '..', 'media', 'products'),
   ];
   app.get(['/media/products/:group/:name', '/media/products/:name'], (req, res) => {

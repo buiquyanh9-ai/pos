@@ -1,0 +1,134 @@
+# CẤU HÌNH MENU VÀ TỒN KHO POS
+
+## 1. Quy định chung
+- Menu gồm 3 mục: **Đồ ăn, Đồ uống, Mang về**.
+- Mỗi hàng tối đa 5 slot, hiển thị tên và giá sản phẩm.
+- Nhấn vào món để thêm vào hóa đơn.
+- Không cần ghi mục Hàng 1, Hàng 2, cứ làm giao diện 5 mục 1 hàng là được.
+- Nếu mục chữ của món dài quá: Ghi là: Trắng sườn, Đảo gà. Trắng bò mang về. Cá thêm mang về.
+## 2. Mục Đồ ăn
+
+**Hàng 1 – Cơm trắng (50.000đ/món)**
+1. Cơm trắng sườn
+2. Cơm trắng xá xíu
+3. Cơm trắng gà
+4. Cơm trắng bò
+5. Cơm trắng cá kho
+
+**Hàng 2 – Cơm đảo (55.000đ/món)**
+1. Cơm đảo sườn
+2. Cơm đảo xá xíu
+3. Cơm đảo gà
+4. Cơm đảo bò
+5. Cơm đảo cá kho
+
+**Hàng 3 – Đồ ăn thêm (40.000đ/món)**
+1. Sườn thêm
+2. Xá xíu thêm
+3. Gà thêm
+4. Bò thêm
+5. Cá kho thêm
+
+**Hàng 4 – Món thêm**
+1. Rau thêm – 10.000đ
+2. Cơm trắng thêm – 5.000đ
+3. Cơm đảo thêm – 10.000đ
+4. Slot trống
+5. Slot trống
+
+## 3. Mục Đồ ăn kèm
+
+**Hàng 1**
+1. Khoai tây chiên – 30.000đ
+2. Trứng ốp – 8.000đ
+3. Ngô chiên – 30.000đ
+4. Lạp xưởng – 10.000đ
+5. Xúc xích – 10.000đ
+
+**Hàng 2**
+1. Trứng kho – 10.000đ
+
+## 4. Mục Đồ uống (cứ tính đơn vị là chai- trừ trà đá)
+
+**Hàng 1**
+1. Sữa đậu – 10.000đ
+2. Coca-Cola – 10.000đ
+3. Trà đá – 5.000đ
+4. Nước gạo – 20.000đ
+5. Nước lọc – 10.000đ
+
+## 5. Mục Mang về
+
+Giữ nguyên bố cục mục Đồ ăn, bắt buộc thêm hậu tố **"mang về"** vào tên sản phẩm.
+
+**Hàng 1 – Cơm trắng mang về (55.000đ)**
+1. Cơm trắng sườn mang về
+2. Cơm trắng xá xíu mang về
+3. Cơm trắng gà mang về
+4. Cơm trắng bò mang về
+5. Cơm trắng cá kho mang về
+
+**Hàng 2 – Cơm đảo mang về (60.000đ)**
+1. Cơm đảo sườn mang về
+2. Cơm đảo xá xíu mang về
+3. Cơm đảo gà mang về
+4. Cơm đảo bò mang về
+5. Cơm đảo cá kho mang về
+
+**Hàng 3 – Đồ ăn thêm mang về (45.000đ)**
+1. Sườn thêm mang về
+2. Xá xíu thêm mang về
+3. Gà thêm mang về
+4. Bò thêm mang về
+5. Cá kho thêm mang về
+
+**Hàng 4 – Không tăng giá**
+1. Rau thêm mang về – 10.000đ
+2. Cơm trắng thêm mang về – 5.000đ
+3. Cơm đảo thêm mang về – 10.000đ
+4. Slot trống
+5. Slot trống
+
+## 6. Quản lý tồn kho
+
+**Nhóm A – Kho đếm chính xác**
+- Gồm: Sườn, xá xíu, gà, bò, cá kho, khoai tây chiên, ngô chiên (tính theo phần) và đồ uống đóng chai/lon.
+- Mỗi sản phẩm bán ra trừ 1 đơn vị tương ứng.
+- Ví dụ: Cơm trắng sườn, cơm đảo sườn và sườn thêm đều trừ chung kho sườn.
+- Không phân biệt ăn tại quán hay mang về.
+
+**Nhóm B – Kho ước lượng**
+- Gồm: Gạo, rau, trà, hộp mang về, trứng (tính theo quả), lạp xưởng và xúc xích (tính theo túi).
+- Trứng dùng chung cho trứng ốp, trứng kho và cơm đảo nên không trừ theo hóa đơn, bếp khai báo đầu ca và cập nhật cuối ca.
+- Lạp xưởng và xúc xích không trừ theo hóa đơn, chỉ theo dõi số túi còn lại.
+- Hiển thị tồn kho dạng "Còn khoảng X".
+- Không quản lý tồn kho riêng cho cơm trắng và cơm đảo, chỉ quản lý gạo.
+- Bán cơm trắng hoặc cơm đảo không tự động trừ gạo.
+- Rau và trà không tự động trừ kho theo hóa đơn.
+- Hộp mang về dự kiến trừ 1 hộp cho mỗi suất cơm hoặc thịt/cá thêm mang về.
+- Cho phép ghi nhận hộp hỏng, thủng và hao hụt.
+
+**Quy trình đầu ca**
+- Mỗi sáng, bộ phận bếp và kho khai báo số lượng gạo đem nấu (lượng bình thường là 15 kg), rau chuẩn bị (lượng bình thường là 4 kg) và lượng trà pha (lượng bình thường là 1 túi 100g). Có thể sửa và hệ thống cập nhật lại phù hợp.
+- Hệ thống ghi nhận lượng nguyên liệu đã xuất từ kho để chế biến.
+- Không quy đổi số suất cơm bán được thành lượng gạo tiêu thụ.
+
+**Quy trình cuối ca**
+- Nhân viên cập nhật lượng nguyên liệu còn lại và hao hụt thực tế.
+- Hệ thống đối chiếu lượng đầu ca, lượng bổ sung và lượng còn lại.
+- Admin xem được lịch sử xuất kho, tiêu hao và điều chỉnh theo từng ca.
+
+**Nguyên tắc**
+- Doanh thu được tính theo sản phẩm bán ra.
+- Tồn kho thịt/cá được trừ theo số phần bán.
+- Gạo, rau và trà được quản lý theo lượng nguyên liệu bếp sử dụng, không dựa vào số hóa đơn.
+- Dữ liệu kho được đồng bộ giữa POS và ứng dụng quản lý.
+## 7. Quy tắc hệ thống
+
+- Chỉ trừ kho tự động khi hóa đơn được xác nhận thành công.
+- Hủy hóa đơn phải hoàn lại các khoản đã trừ tự động.
+- Không trừ kho hai lần cho cùng một giao dịch.
+- Kho chính xác và kho ước lượng phải có cách hiển thị riêng.
+- Dữ liệu tồn kho đồng bộ giữa POS và ứng dụng quản lý.
+- Admin có quyền nhập hàng, điều chỉnh kho, ghi nhận hao hụt và xem báo cáo theo ca.
+- Không tự ý thay đổi tên sản phẩm, giá hoặc bố cục menu.

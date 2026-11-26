@@ -1,20 +1,21 @@
 # ShopFlow
 
-ShopFlow is a sales and revenue-monitoring system for food & beverage shops. It has two independent apps that share one backend and one database:
+ShopFlow là hệ thống bán hàng và theo dõi doanh thu cho cửa hàng đồ ăn, đồ uống. Hệ thống gồm hai ứng dụng độc lập, dùng chung một máy chủ (backend) và một cơ sở dữ liệu:
 
-| App | Who uses it | Where it runs |
+| Ứng dụng | Người dùng | Chạy trên |
 |---|---|---|
-| **ShopFlow POS** (`apps/pos`) | Cashiers | Browser on Windows; APK for Android POS terminals (Capacitor) |
-| **ShopFlow Boss** (`apps/boss`) | The shop owner | Phone (Android/iOS via Capacitor, or installable web app) |
-| **Backend** (`apps/server`) | Both apps | Any PC or server with Node.js 24 |
+| **ShopFlow POS** (`apps/pos`) | Thu ngân | Trình duyệt trên Windows; APK cho máy POS Android (Capacitor) |
+| **ShopFlow Boss** (`apps/boss`) | Chủ cửa hàng | Điện thoại (Android/iOS qua Capacitor, hoặc web app cài lên màn hình chính) |
+| **Máy chủ** (`apps/server`) | Cả hai ứng dụng | Máy tính hoặc server bất kỳ có Node.js 24 |
 
 ```
-apps/server     Node 24 + Express + SQLite (node:sqlite) · auth & roles · orders · shifts & cash drawer
-                · reports · notifications · realtime (SSE)
-apps/pos        React + Vite + TS · touch POS · offline-first order queue · hardware drivers (printer, scanner, drawer)
-apps/boss       React + Vite + TS · owner dashboard · reports by exact time range · live activity · notifications
-packages/shared Types and formatting shared by POS and Boss
-docs/           SYNC.md (API & business rules) · ANDROID.md (APK) · DEPLOY.md (production) · SUNMI.md
+apps/server     Node 24 + Express + SQLite (node:sqlite) · đăng nhập & phân quyền · đơn hàng · ca & két tiền
+                · báo cáo · thông báo · cập nhật thời gian thực (SSE)
+apps/pos        React + Vite + TS · POS cảm ứng · hàng đợi đơn khi mất mạng · driver thiết bị (máy in, máy quét, két)
+apps/boss       React + Vite + TS · dashboard chủ quán · báo cáo theo khung giờ chính xác · hoạt động trực tiếp · thông báo
+packages/shared Kiểu dữ liệu và hàm định dạng dùng chung cho POS và Boss
+product/        Thực đơn (z.product) và ảnh món (product_img/)
+docs/           SYNC.md (API & quy tắc nghiệp vụ) · ANDROID.md (APK) · DEPLOY.md (triển khai) · SUNMI.md
 ```
 
 ## Demo bằng một thao tác
@@ -31,129 +32,130 @@ Tài khoản mẫu: POS chọn Kim, PIN `1111` (Hiền là chủ, PIN `3333`); B
 Đóng cửa sổ demo là tắt hết. Nếu ShopFlow thật (`Mo ShopFlow.cmd`) đang chạy thì demo không chạy đè: đóng bản thật trước.
 Tuỳ chọn: `--keep` (giữ dữ liệu demo lần trước), `--no-android` (không có máy ảo: mở POS bản web), `--web` (mở thêm POS bản web).
 
-## Quick start (Windows)
+## Chạy nhanh (Windows)
 
-Requires **Node.js 24+**.
-
-```powershell
-cd shopflow-pos
-npm install
-npm run seed:demo -w apps/server   # optional: 14 days of SAMPLE sales so reports have data
-npm run dev                         # backend :4000, POS :5173, Boss :5174
-```
-
-- POS: http://localhost:5173. Log in by choosing a staff member and entering their PIN.
-- Boss: http://localhost:5174. Log in with the owner's username and password. It is laid out for a phone screen; use the browser's device toolbar on a PC.
-- On first start the backend creates **sample data**: the store "Cửa hàng mẫu", demo accounts and tables (the menu comes from `product/z.product`). Every sample record is marked "mẫu" (sample).
-
-### POS on the PC, Boss on your phone (same Wi-Fi)
+Cần **Node.js 24 trở lên**.
 
 ```powershell
-npm run serve        # builds POS + Boss, then serves everything on port 4000
+npm install                         # chạy trong thư mục gốc của mã nguồn
+npm run seed:demo -w apps/server    # tuỳ chọn: thêm 14 ngày bán hàng MẪU để báo cáo có số liệu
+npm run dev                         # máy chủ :4000, POS :5173, Boss :5174
 ```
 
-- On the PC, open the POS at `http://localhost:4000/pos/`.
-- On the phone, use the same Wi-Fi and open `http://<PC IP>:4000/boss/` (e.g. `http://192.168.2.211:4000/boss/`). The server prints the PC's LAN IP when it starts. The browser's *Add to Home screen* turns it into an app icon.
-- **iPhone:** open the address in **Safari**, tap *Share* → *Add to Home Screen*. ShopFlow Boss then gets its own icon and opens full screen like an app, without the App Store. A banner in the app explains this.
-- Every sale, refund, shift close and open bill reaches the phone within about a second (SSE).
-- If the phone cannot connect, allow port 4000 in Windows Firewall. In PowerShell **as Administrator**:
+- POS: http://localhost:5173. Đăng nhập bằng cách chọn nhân viên rồi nhập PIN.
+- Boss: http://localhost:5174. Đăng nhập bằng tên đăng nhập và mật khẩu của chủ. Giao diện thiết kế cho màn hình điện thoại; trên máy tính hãy bật chế độ giả lập thiết bị (device toolbar) của trình duyệt.
+- Lần chạy đầu, máy chủ tự tạo **dữ liệu mẫu**: cửa hàng "Cửa hàng mẫu", các tài khoản và bàn mẫu (thực đơn lấy từ `product/z.product`). Mọi bản ghi mẫu đều được đánh dấu "mẫu".
+
+### POS trên máy tính, Boss trên điện thoại (cùng Wi-Fi)
+
+```powershell
+npm run serve        # build POS + Boss, rồi phục vụ tất cả ở cổng 4000
+```
+
+- Trên máy tính, mở POS tại `http://localhost:4000/pos/`.
+- Trên điện thoại, kết nối cùng Wi-Fi và mở `http://<IP máy tính>:4000/boss/` (ví dụ `http://192.168.2.211:4000/boss/`). Máy chủ in ra địa chỉ IP mạng LAN khi khởi động. Dùng *Thêm vào màn hình chính* của trình duyệt để có biểu tượng như một ứng dụng.
+- **iPhone:** mở địa chỉ bằng **Safari**, bấm *Chia sẻ* → *Thêm vào MH chính*. ShopFlow Boss sẽ có biểu tượng riêng và mở toàn màn hình như ứng dụng, không cần App Store. Trong app có banner hướng dẫn việc này.
+- Mỗi đơn bán, hoàn tiền, chốt ca và hoá đơn đang mở đều hiện trên điện thoại trong khoảng một giây (SSE).
+- Nếu điện thoại không kết nối được, hãy mở cổng 4000 trên Windows Firewall. Chạy PowerShell **với quyền Administrator**:
   `New-NetFirewallRule -DisplayName "ShopFlow 4000" -Direction Inbound -Protocol TCP -LocalPort 4000 -Action Allow -Profile Private`.
-  Also check that the Wi-Fi network is set to *Private*.
+  Đồng thời kiểm tra mạng Wi-Fi đang để chế độ *Private* (Riêng tư).
 
-### Menu file: `product/z.product`
+### File thực đơn: `product/z.product`
 
-The shop's menu is maintained in `c:\VISUAL\pos\product\z.product`, a Markdown file next to the repo.
-- The backend imports it at startup and again every time the file is saved. Products, prices, categories, the 5-slots-per-row layout and tables 001-024 all come from it.
-- Photos go in `product/product_img/<label>/<name>.jpg|png|webp`. Labels: `com-trang` (white rice), `com-dao` (fried rice), `mon-them` (extra portions), `do-an-kem` (side dishes), `do-uong` (drinks). Example: `com-trang/com-trang-suon.jpg`. The server supplies `/media/products/<label>/<name>`; old flat URLs still work. Takeaway items reuse the dine-in photo. Six side-dish images are available for future menu entries; adding images does not add products or prices.
-- Check the result without changing anything: `npm run import-menu -w apps/server`. It prints the grid and any warnings.
+Thực đơn của quán được quản lý trong `product/z.product`, một file Markdown.
+- Máy chủ tìm thư mục `product/` cạnh thư mục mã nguồn trước (cách bố trí trên máy của quán), nếu không có thì dùng `product/` bên trong mã nguồn. Có thể chỉ định đường dẫn khác bằng biến `MENU_FILE` và `MENU_IMG_DIR`.
+- Máy chủ nạp thực đơn khi khởi động và nạp lại mỗi khi file được lưu. Món, giá, danh mục, bố cục 5 ô mỗi hàng và các bàn 001–024 đều lấy từ file này.
+- Ảnh món đặt ở `product/product_img/<nhãn>/<tên>.jpg|png|webp`. Các nhãn: `com-trang` (cơm trắng), `com-dao` (cơm đảo), `mon-them` (món thêm), `do-an-kem` (đồ ăn kèm), `do-uong` (đồ uống). Ví dụ: `com-trang/com-trang-suon.jpg`. Máy chủ phục vụ ảnh tại `/media/products/<nhãn>/<tên>`; đường dẫn kiểu cũ (không có nhãn) vẫn dùng được. Món mang đi dùng chung ảnh với món ăn tại quán. Có sẵn sáu ảnh đồ ăn kèm để dùng cho món sau này; thêm ảnh không tự thêm món hay giá.
+- Kiểm tra kết quả mà không thay đổi gì: `npm run import-menu -w apps/server`. Lệnh in ra lưới thực đơn và các cảnh báo nếu có.
 
-### Owner on any network (4G, other Wi-Fi)
+### Chủ quán xem từ mạng bất kỳ (4G, Wi-Fi khác)
 
 ```powershell
-npm run serve          # terminal 1: the shop server
-npm run tunnel         # terminal 2: public https link (Cloudflare Quick Tunnel, free)
+npm run serve          # cửa sổ 1: máy chủ của quán
+npm run tunnel         # cửa sổ 2: link https công khai (Cloudflare Quick Tunnel, miễn phí)
 ```
 
-`npm run tunnel` prints `https://<random>.trycloudflare.com/boss/`. Open that link in Safari on the iPhone and add it to the Home Screen. It works from anywhere, with real-time updates.
-- Requires `tools/cloudflared.exe`, downloaded from github.com/cloudflare/cloudflared/releases.
-- The link changes every time the tunnel restarts. For a permanent address, use a named Cloudflare tunnel with your own domain, or a VPS (`docs/DEPLOY.md`).
-- When exposed to the Internet, the server applies: login lockout per account and per real client IP (proxy-aware), a per-IP rate limit, and security headers.
+`npm run tunnel` in ra `https://<ngẫu-nhiên>.trycloudflare.com/boss/`. Mở link đó bằng Safari trên iPhone và thêm vào màn hình chính. Dùng được ở mọi nơi, cập nhật thời gian thực.
+- Cần file `tools/cloudflared.exe`, tải tại github.com/cloudflare/cloudflared/releases.
+- Link thay đổi mỗi lần khởi động lại tunnel. Muốn địa chỉ cố định, dùng Cloudflare tunnel có tên với tên miền riêng, hoặc thuê VPS (`docs/DEPLOY.md`).
+- Khi mở ra Internet, máy chủ áp dụng: khoá đăng nhập theo tài khoản và theo IP thật của người dùng (nhận biết proxy), giới hạn số yêu cầu theo IP, và các header bảo mật.
 
-### Demo accounts (sample data only)
+### Tài khoản mẫu (chỉ có trong dữ liệu mẫu)
 
-| Role | Username | Password (Boss) | PIN (POS) |
+| Vai trò | Tên đăng nhập | Mật khẩu (Boss) | PIN (POS) |
 |---|---|---|---|
-| Cashier (Thu ngân): Kim | `thungan` | `thungan123` | `1111` |
-| Cashier (Thu ngân): Minh | `thungan2` | `thungan2123` | `2222` |
-| Owner (Chủ cửa hàng): Hiền | `chu` | `chu123456` | `3333` |
+| Thu ngân: Kim | `thungan` | `thungan123` | `1111` |
+| Thu ngân: Minh | `thungan2` | `thungan2123` | `2222` |
+| Chủ cửa hàng: Hiền | `chu` | `chu123456` | `3333` |
 
-For a real shop:
-1. Start the backend once with `SEED=0` and an empty database.
-2. Create the owner with `npm run create-owner -w apps/server -- <username> <password> [PIN]`.
-3. Add staff and menu from the apps or the API.
+Với cửa hàng thật:
+1. Khởi động máy chủ một lần với `SEED=0` và cơ sở dữ liệu trống.
+2. Tạo tài khoản chủ bằng `npm run create-owner -w apps/server -- <tên đăng nhập> <mật khẩu> [PIN]`.
+3. Thêm nhân viên và thực đơn từ ứng dụng hoặc qua API.
 
-### Commands
+### Các lệnh
 
-| Command | What it does |
+| Lệnh | Tác dụng |
 |---|---|
-| `npm run dev` | Backend, POS and Boss with hot reload |
-| `npm test` | Server API and business-flow tests, plus POS and Boss unit tests |
-| `npm run typecheck` | TypeScript check of all apps |
-| `npm run build` | Production builds of POS (`apps/pos/dist`) and Boss (`apps/boss/dist`) |
-| `npm start -w apps/server` | Backend without file watching |
-| `npm run seed:demo -w apps/server` | Add SAMPLE sales for the last 14 days (runs once per database) |
-| `npm run create-owner -w apps/server -- user pass [pin]` | Create or reset an owner account |
+| `npm run dev` | Chạy máy chủ, POS và Boss, tự tải lại khi sửa code |
+| `npm test` | Kiểm thử API và luồng nghiệp vụ của máy chủ, cùng unit test của POS và Boss |
+| `npm run typecheck` | Kiểm tra TypeScript cho tất cả ứng dụng |
+| `npm run build` | Build bản chính thức của POS (`apps/pos/dist`) và Boss (`apps/boss/dist`) |
+| `npm start -w apps/server` | Chạy máy chủ, không theo dõi thay đổi file |
+| `npm run seed:demo -w apps/server` | Thêm dữ liệu bán hàng MẪU cho 14 ngày gần nhất (chỉ chạy một lần cho mỗi cơ sở dữ liệu) |
+| `npm run create-owner -w apps/server -- user pass [pin]` | Tạo hoặc đặt lại tài khoản chủ |
 
-### Backend configuration (`apps/server/.env`, optional)
+### Cấu hình máy chủ (`apps/server/.env`, không bắt buộc)
 
-| Variable | Default | Meaning |
+| Biến | Mặc định | Ý nghĩa |
 |---|---|---|
-| `PORT` / `HOST` | `4000` / `0.0.0.0` | Listens on the LAN so POS terminals and phones can connect |
-| `DB_PATH` | `./data/shopflow.db` | SQLite file. Back it up daily, see `docs/DEPLOY.md` |
-| `SEED` | `1` | `0` turns off the sample data |
-| `SEED_DEMO_SALES` | `0` | `1` adds the 14 days of sample sales at startup |
-| `SHOPFLOW_API_KEY` | *(empty)* | Optional service key for integrations. A request with this key acts as the owner |
-| `TZ_OFFSET_MIN` | `420` | Shop time zone in minutes (UTC+7) |
-| `DAY_SUMMARY_HOUR` | `22` | Local hour at which the daily summary notification is sent |
-| `FCM_SERVICE_ACCOUNT` | *(empty)* | Path to a Firebase service-account JSON file. Turns on push to phones when the app is closed |
+| `PORT` / `HOST` | `4000` / `0.0.0.0` | Lắng nghe trên mạng LAN để máy POS và điện thoại kết nối được |
+| `DB_PATH` | `./data/shopflow.db` | File SQLite. Sao lưu hằng ngày, xem `docs/DEPLOY.md` |
+| `SEED` | `1` | `0` để tắt dữ liệu mẫu |
+| `SEED_DEMO_SALES` | `0` | `1` để thêm 14 ngày bán hàng mẫu khi khởi động |
+| `SHOPFLOW_API_KEY` | *(trống)* | Khoá dịch vụ tuỳ chọn cho tích hợp. Yêu cầu dùng khoá này có quyền như chủ |
+| `TZ_OFFSET_MIN` | `420` | Múi giờ của quán, tính bằng phút (UTC+7) |
+| `DAY_SUMMARY_HOUR` | `22` | Giờ địa phương gửi thông báo tổng kết cuối ngày |
+| `FCM_SERVICE_ACCOUNT` | *(trống)* | Đường dẫn file JSON service account của Firebase. Bật thông báo đẩy tới điện thoại khi app đang đóng |
+| `MENU_FILE` / `MENU_IMG_DIR` | *(tự tìm `product/`)* | Đường dẫn file thực đơn / thư mục ảnh món, nếu muốn để ở chỗ khác |
 
-## How the system works
+## Cách hệ thống hoạt động
 
-1. **Sale on the POS.** The cashier logs in with a PIN and opens a shift with the opening cash.
-   - An order is saved on the device first, then uploaded.
-   - Each order has an id generated on the device, so a retry never creates a duplicate.
-   - Selling continues while offline; the header shows how many orders are waiting to upload.
-2. **Backend.** In one transaction, the backend stores the order and its lines.
-   - Concurrent or repeated uploads of the same order are stored once.
-   - Totals are recomputed on the server.
-3. **Boss sees it live.** The backend pushes events over SSE (`/api/events`), so the dashboard, activity feed and reports refresh within about a second.
-4. **Alerts.** Voids, refunds and shift summaries create notifications. They appear in Boss immediately, and on the phone as a push notification when FCM is configured.
-5. **End of shift.** The cashier counts the cash by denomination. The shift report shows expected vs counted cash, and the owner is notified.
+1. **Bán hàng trên POS.** Thu ngân đăng nhập bằng PIN và mở ca với số tiền đầu ca.
+   - Đơn được lưu trên thiết bị trước, rồi mới gửi lên máy chủ.
+   - Mỗi đơn có mã do thiết bị sinh ra, nên gửi lại nhiều lần cũng không bị trùng đơn.
+   - Mất mạng vẫn bán tiếp được; thanh tiêu đề hiện số đơn đang chờ gửi.
+2. **Máy chủ.** Lưu đơn và các dòng món trong cùng một transaction.
+   - Một đơn gửi lên đồng thời hoặc lặp lại chỉ được lưu một lần.
+   - Tổng tiền được tính lại trên máy chủ.
+3. **Boss thấy ngay.** Máy chủ đẩy sự kiện qua SSE (`/api/events`), nên dashboard, luồng hoạt động và báo cáo cập nhật trong khoảng một giây.
+4. **Cảnh báo.** Huỷ đơn, hoàn tiền và tổng kết ca đều tạo thông báo. Thông báo hiện ngay trong Boss, và hiện thành thông báo đẩy trên điện thoại khi đã cấu hình FCM.
+5. **Cuối ca.** Thu ngân đếm tiền theo từng mệnh giá. Báo cáo ca so sánh tiền dự kiến với tiền đếm thực tế, và chủ quán nhận được thông báo.
 
-**Also in the POS:**
-- **Open bills.** Save a table's order unpaid, edit it from any terminal, move it to another table, then pay or cancel it (a reason is required). Busy tables are highlighted. The owner sees these bills in Boss under *Hoạt động → Hoá đơn hiện tại*.
-- **Options.** Size, ice, sugar and toppings, each with a surcharge.
-- **Owner back-office (*Quản lý*).** Menu and prices, categories, options, tables, staff (roles, PIN, password, lock).
-- **Void / refund.** Both need a reason. Everything is in the audit log, which the owner can read in Boss under *Thêm → Lịch sử thao tác*.
+**Các chức năng khác trên POS:**
+- **Hoá đơn đang mở.** Lưu đơn của bàn khi chưa thanh toán, sửa từ máy POS bất kỳ, chuyển sang bàn khác, rồi thanh toán hoặc huỷ (bắt buộc ghi lý do). Bàn đang có khách được tô nổi. Chủ quán xem các hoá đơn này trong Boss ở *Hoạt động → Hoá đơn hiện tại*.
+- **Tuỳ chọn món.** Size, đá, đường và topping, mỗi tuỳ chọn có thể cộng thêm tiền.
+- **Quản lý (dành cho chủ).** Thực đơn và giá, danh mục, tuỳ chọn, bàn, nhân viên (vai trò, PIN, mật khẩu, khoá tài khoản).
+- **Huỷ đơn / hoàn tiền.** Cả hai đều phải ghi lý do. Mọi thao tác được lưu vào lịch sử thao tác, chủ quán xem trong Boss ở *Thêm → Lịch sử thao tác*.
 
-Revenue rules (net, refunds, voids, profit) are in [docs/SYNC.md](docs/SYNC.md).
+Quy tắc tính doanh thu (doanh thu thuần, hoàn tiền, huỷ đơn) nằm trong [docs/SYNC.md](docs/SYNC.md).
 
-**Roles (two):**
-- **Owner:** everything. Usually works remotely from the Boss app on the phone (reports, staff, menu); still has a POS account.
-- **Cashier:** works at the POS. Selling, void/refund with a reason, shifts and the cash drawer. The former stock-staff role was merged into cashier.
+**Vai trò (hai vai trò):**
+- **Chủ cửa hàng:** toàn quyền. Thường làm việc từ xa qua app Boss trên điện thoại (báo cáo, nhân viên, thực đơn); vẫn có tài khoản trên POS.
+- **Thu ngân:** làm việc tại POS. Bán hàng, huỷ đơn/hoàn tiền có ghi lý do, ca làm việc và két tiền. Vai trò nhân viên kho trước đây đã gộp vào thu ngân.
 
 ## Android
 
-- POS and Boss each have a Capacitor Android project (`apps/pos/android`, `apps/boss/android`).
-- Building an APK needs Android Studio (JDK 21 + SDK). Step-by-step guide, ADB install and the real-terminal test checklist: [docs/ANDROID.md](docs/ANDROID.md).
-- Printer/SUNMI notes: [docs/SUNMI.md](docs/SUNMI.md).
+- POS và Boss đều có project Android Capacitor (`apps/pos/android`, `apps/boss/android`).
+- Build APK cần Android Studio (JDK 21 + SDK). Hướng dẫn từng bước, cài qua ADB và danh sách kiểm tra trên máy POS thật: [docs/ANDROID.md](docs/ANDROID.md).
+- Ghi chú về máy in và máy SUNMI: [docs/SUNMI.md](docs/SUNMI.md).
 
-## Status
+## Tình trạng
 
-Not done yet:
-- APK built and tested on a physical terminal (no hardware or Android SDK in the dev environment).
-- FCM push tested with a real Firebase project.
-- PostgreSQL. The data layer is SQLite for now; see `docs/DEPLOY.md` for the migration path.
+Chưa hoàn tất:
+- Build APK và kiểm thử trên máy POS thật (môi trường phát triển chưa có phần cứng và Android SDK).
+- Kiểm thử thông báo đẩy FCM với một project Firebase thật.
+- PostgreSQL. Tầng dữ liệu hiện dùng SQLite; cách chuyển đổi xem trong `docs/DEPLOY.md`.
 
 ## Bật / tắt ShopFlow khi cần (máy này làm máy chủ)
 

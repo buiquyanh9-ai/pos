@@ -4,9 +4,16 @@ import { fileURLToPath } from 'node:url';
 import type { DB } from './db.ts';
 import { importMenu } from './menu.ts';
 
-/** <workspace>/product/z.product next to the repo, or MENU_FILE. */
+/** The shop's product folder: <workspace>/product next to the repo if present, otherwise <repo>/product. */
+export function productDir() {
+  const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+  const beside = join(repo, '..', 'product');
+  return existsSync(join(beside, 'z.product')) ? beside : join(repo, 'product');
+}
+
+/** product/z.product (see productDir), or MENU_FILE. */
 export function defaultMenuPath() {
-  return process.env.MENU_FILE ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'product', 'z.product');
+  return process.env.MENU_FILE ?? join(productDir(), 'z.product');
 }
 
 /** Import the menu at startup if the file changed, then re-import whenever it is saved. */
