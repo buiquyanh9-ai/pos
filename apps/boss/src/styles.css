@@ -229,7 +229,7 @@ body { background: var(--bg); }
 .login-brand { color: #2563eb; }
 .login-logo { border-radius: 16px; box-shadow: 0 6px 18px rgb(37 99 235 / 0.28); }
 
-/* ---- payment method tiles (Claude) */
+/* ---- payment method tiles */
 .pay-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .pay-tile { display: grid; grid-template-columns: auto 1fr; grid-template-areas: 'dot label' 'dot total' 'dot sub'; column-gap: 10px; align-items: center; text-align: left; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); min-height: 84px; }
 .pay-tile .pay-dot { grid-area: dot; width: 10px; height: 44px; border-radius: 5px; }

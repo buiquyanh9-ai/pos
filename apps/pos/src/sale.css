@@ -1,5 +1,5 @@
 /* Sale screen in the classic F&B POS layout: photo grid (5 per row) + category bar at the bottom,
-   bill panel on the right with "Chọn bàn" on top, full-screen table map. Owner: Claude. */
+   bill panel on the right with "Chọn bàn" on top, full-screen table map. */
 
 :root {
   --pos-free: #16a34a;

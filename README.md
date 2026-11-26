@@ -14,7 +14,7 @@ apps/server     Node 24 + Express + SQLite (node:sqlite) · auth & roles · orde
 apps/pos        React + Vite + TS · touch POS · offline-first order queue · hardware drivers (printer, scanner, drawer)
 apps/boss       React + Vite + TS · owner dashboard · reports by exact time range · live activity · notifications
 packages/shared Types and formatting shared by POS and Boss
-docs/           SYNC.md (API & business rules) · ANDROID.md (APK) · DEPLOY.md (production) · SUNMI.md · PLAN.md
+docs/           SYNC.md (API & business rules) · ANDROID.md (APK) · DEPLOY.md (production) · SUNMI.md
 ```
 
 ## Demo bằng một thao tác
@@ -150,7 +150,7 @@ Revenue rules (net, refunds, voids, profit) are in [docs/SYNC.md](docs/SYNC.md).
 
 ## Status
 
-See [docs/PLAN.md](docs/PLAN.md) for the plan and what has been tested. Not done yet:
+Not done yet:
 - APK built and tested on a physical terminal (no hardware or Android SDK in the dev environment).
 - FCM push tested with a real Firebase project.
 - PostgreSQL. The data layer is SQLite for now; see `docs/DEPLOY.md` for the migration path.
