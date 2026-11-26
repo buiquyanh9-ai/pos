@@ -37,7 +37,7 @@ Chỉ chủ: `GET/POST/PUT /users` · `GET /audit`
 | `GET/POST/PUT /option-groups` | Size / đá / đường / topping. `options: [{name, priceDelta}]`, `multi`, `required` |
 | `GET/POST/PUT /tables` | Bàn, kèm khu vực |
 
-Sản phẩm còn trường `cost` (giá vốn nhập tay, tuỳ chọn, `null` khi chưa nhập). Giao diện POS và Boss không dùng trường này vì cửa hàng chỉ theo dõi doanh thu.
+Sản phẩm còn trường `cost` (giá vốn nhập tay, tuỳ chọn, `null` khi chưa nhập). Giao diện POS và Boss không dùng trường này.
 
 ### Bán hàng
 
@@ -60,7 +60,7 @@ Sản phẩm còn trường `cost` (giá vốn nhập tay, tuỳ chọn, `null` 
 
 ### Kho
 
-Module kho (tồn kho, công thức/BOM, kiểm kê, bếp, nhà cung cấp, nhập hàng) đã được gỡ ngày 25/11/2026 theo yêu cầu của cửa hàng. Cơ sở dữ liệu cũ sẽ tự xoá các bảng này khi khởi động.
+Phiên bản này không có module kho. Cơ sở dữ liệu từ phiên bản cũ có bảng kho sẽ được tự dọn khi khởi động.
 
 ### Báo cáo, dữ liệu trực tiếp, thông báo
 

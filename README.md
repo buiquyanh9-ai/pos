@@ -26,7 +26,7 @@
 12. [Nghiệp vụ và đồng bộ dữ liệu](#12-nghiệp-vụ-và-đồng-bộ-dữ-liệu)
 13. [Bảo mật](#13-bảo-mật)
 14. [Kiểm thử](#14-kiểm-thử)
-15. [Kết quả chạy thực tế và giới hạn](#15-kết-quả-chạy-thực-tế-và-giới-hạn)
+15. [Giới hạn hiện tại](#15-giới-hạn-hiện-tại)
 16. [Tài liệu chi tiết](#16-tài-liệu-chi-tiết)
 
 ---
@@ -37,7 +37,7 @@ ShopFlow phục vụ cửa hàng đồ ăn, đồ uống quy mô vừa, có thu 
 
 | Ứng dụng | Người dùng | Chạy trên |
 |---|---|---|
-| **ShopFlow POS** (`apps/pos`) | Thu ngân | Trình duyệt trên Windows; APK cho máy POS Android (đã chạy trên SUNMI T1-G) |
+| **ShopFlow POS** (`apps/pos`) | Thu ngân | Trình duyệt trên Windows; APK cho máy POS Android (ví dụ SUNMI) |
 | **ShopFlow Boss** (`apps/boss`) | Chủ cửa hàng | Điện thoại Android (APK) hoặc iPhone/Android dạng web app cài lên màn hình chính |
 | **Máy chủ** (`apps/server`) | Cả hai ứng dụng | Máy tính trong quán hoặc VPS có Node.js 24 |
 
@@ -323,24 +323,12 @@ Bộ kiểm thử gồm 51 ca, chạy trên cơ sở dữ liệu tạm trong b�
 - **POS (15 ca):** giỏ hàng và tính tiền, cài đặt máy chủ/thiết bị, tổng kết ca.
 - **Boss (6 ca):** tính khoảng thời gian báo cáo (theo giờ chính xác), tạo mã VietQR.
 
-## 15. Kết quả chạy thực tế và giới hạn
+## 15. Giới hạn hiện tại
 
-Đã chạy thực tế:
-
-- **POS bản APK trên máy POS SUNMI T1-G** (Android 6.0.1, WebView Chrome 69), cài qua Bluetooth. Máy in nhiệt rời RICHTA RI-58A (khổ 58 mm) cắm USB, két tiền cắm vào máy in. Đã bán hàng, in hoá đơn tiền mặt và chuyển khoản, mở két khi thanh toán tiền mặt có tiền thối, in phiếu tổng kết ca.
-- **Boss trên iPhone** (Safari, thêm vào màn hình chính) và điện thoại qua 4G: doanh thu nhảy gần như ngay khi POS thanh toán; đo được khoảng 0,4–0,7 giây từ lúc bấm thanh toán tới khi điện thoại nhận sự kiện.
-- **Máy chủ trên VPS** qua Cloudflare Tunnel (HTTPS): POS và Boss chạy khi máy tính trong quán đã tắt; mỗi trang tải khoảng 0,2 giây.
-- **Mất mạng:** rút LAN/tắt Wi-Fi trên máy POS vẫn bán, in và mở két; có mạng lại thì đơn tự đồng bộ trong khoảng 10 giây. Đơn trong giỏ vẫn còn sau khi tắt hẳn ứng dụng và mở lại.
-- POS và Boss bản APK trên máy ảo Android 15, kèm máy in ESC/POS ảo.
-
-Các lỗi chỉ phát hiện được trên thiết bị thật đã được xử lý: Android 6 không tin chứng chỉ Let's Encrypt (APK kèm chứng chỉ gốc ISRG Root X1), WebView đời cũ thiếu một số tính năng CSS/JS (build cho Chrome 69), máy in in mũi tên thành ký tự lạ (đổi ký hiệu sang ASCII khi in), Boss chạy nền làm kết nối trực tiếp bị treo (tự nối lại và tải lại số liệu), tiêu đề POS bị thanh trình duyệt Safari che.
-
-Giới hạn hiện tại và hướng phát triển:
-
-- **Thông báo đẩy khi app Boss đang đóng (FCM):** phần gửi phía máy chủ đã viết, nhưng chưa thử với một project Firebase thật. Khi Boss đang mở hoặc chạy nền, thông báo vẫn đến ngay qua SSE.
-- **Cơ sở dữ liệu:** đang dùng SQLite, đủ cho quy mô một cửa hàng; đường chuyển sang PostgreSQL đã mô tả trong [docs/DEPLOY.md](docs/DEPLOY.md).
-- **Boss trên iPhone** chạy dạng web app (đầy đủ chức năng); chưa build bản iOS gốc để đưa lên App Store.
-- Theo yêu cầu của cửa hàng, phiên bản này **không có module kho và không tính giá vốn/lợi nhuận**, chỉ theo dõi doanh thu.
+- **Thông báo đẩy khi app Boss đang đóng (FCM):** phần gửi phía máy chủ đã có, cần cấu hình một project Firebase để bật ([docs/DEPLOY.md](docs/DEPLOY.md)). Khi Boss đang mở hoặc chạy nền, thông báo vẫn đến ngay qua SSE.
+- **Cơ sở dữ liệu:** dùng SQLite, đủ cho quy mô một cửa hàng; cách chuyển sang PostgreSQL mô tả trong [docs/DEPLOY.md](docs/DEPLOY.md).
+- **Boss trên iPhone** chạy dạng web app; chưa có bản iOS gốc trên App Store.
+- **Phạm vi:** hệ thống theo dõi doanh thu; không có module kho và không tính giá vốn/lợi nhuận.
 
 ## 16. Tài liệu chi tiết
 

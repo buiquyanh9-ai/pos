@@ -2,7 +2,7 @@
 
 ShopFlow POS không bắt buộc phải có máy SUNMI hay SDK của SUNMI. Trên trình duyệt, POS dùng driver in qua trình duyệt hoặc driver giả lập. Bản Android dùng driver ESC/POS qua USB (máy in rời cắm vào máy POS) hoặc ESC/POS qua mạng khi có máy in trong mạng LAN.
 
-> Đã chạy thực tế trên **SUNMI T1-G** (bản không có máy in tích hợp) với máy in rời RICHTA RI-58A cắm USB và két tiền cắm vào máy in, dùng driver `escpos-usb`. Trường hợp này không cần SDK của SUNMI.
+> Với máy SUNMI không có máy in tích hợp (ví dụ T1-G), dùng máy in nhiệt rời cắm USB và két tiền cắm vào máy in, chọn driver `escpos-usb`. Trường hợp này không cần SDK của SUNMI.
 
 ## Cầu nối tuỳ chọn cho máy in tích hợp
 

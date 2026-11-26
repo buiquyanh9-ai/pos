@@ -29,9 +29,9 @@ File `Mo ShopFlow.cmd` ở thư mục gốc là ví dụ khởi động một ch
 3. Chạy máy chủ với `HOST=127.0.0.1` phía sau proxy. Hai ứng dụng khi đó dùng địa chỉ `https://shop.example.com`.
 4. Khi chỉ dùng HTTPS, có thể bỏ `cleartext` / `usesCleartextTraffic` khỏi bản Android.
 
-### Ví dụ đã chạy thực tế: VPS Ubuntu + Cloudflare Tunnel
+### Ví dụ: VPS Ubuntu + Cloudflare Tunnel
 
-Cách này đã dùng cho cửa hàng thử nghiệm: VPS Ubuntu 24.04 (1 vCPU, 1 GB RAM, 20 GB SSD), tên miền riêng qua Cloudflare. Máy tính trong quán có thể tắt.
+VPS Ubuntu 24.04 (1 vCPU, 1 GB RAM, 20 GB SSD) với tên miền riêng qua Cloudflare. Máy tính trong quán có thể tắt mà POS và Boss vẫn hoạt động.
 
 1. Cài Node 24, đặt múi giờ `Asia/Ho_Chi_Minh`. SSH chỉ cho đăng nhập bằng khoá; tường lửa `ufw` chỉ mở cổng SSH.
 2. Chép mã nguồn đã build vào `/opt/shopflow` (gồm `apps/server`, `apps/pos/dist`, `apps/boss/dist` và `product/`). Chạy bằng một user riêng, ví dụ `shopflow`.
@@ -95,7 +95,6 @@ Phần gửi phía máy chủ đã được viết (FCM HTTP v1 với JWT ký s�
 - Dùng HTTPS khi máy chủ truy cập được từ Internet.
 - Đăng nhập bị khoá 5 phút sau 5 lần sai PIN hoặc mật khẩu.
 - Mọi lần huỷ đơn, hoàn tiền, huỷ hoá đơn mở và thu/chi két đều có trong lịch sử thao tác (`GET /api/audit`).
-- Nếu token Cloudflare Tunnel từng bị lộ, tạo lại token trong Cloudflare.
 
 ## Chuyển sang PostgreSQL sau này
 
